@@ -1,0 +1,21 @@
+# Laravel
+/vendor
+/node_modules
+/public/storage
+/storage/*.key
+.env
+
+# Firebase secret
+storage/app/firebase/serviceAccountKey.json
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+
+
