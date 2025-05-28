@@ -13,6 +13,7 @@
         "google/cloud-firestore": "^1.50",
         "google/protobuf": "^3.17",
         "grpc/grpc": "^1.38",
+        "guzzlehttp/guzzle": "^7.9",
         "kreait/firebase-php": "^7.18",
         "kreait/laravel-firebase": "^6.0",
         "laravel/framework": "^11.39.1",
