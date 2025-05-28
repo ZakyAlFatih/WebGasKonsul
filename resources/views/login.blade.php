@@ -51,16 +51,8 @@
         <img src="{{ asset('images/gasKonsul_logo.png') }}" alt="Logo" />
         <span class="fw-bold text-primary">GasKonsul</span>
     </a>
-    <form class="d-flex ms-auto me-3">
-        <input class="form-control me-2" type="search" placeholder="Cari" aria-label="Cari" />
-    </form>
-    <ul class="navbar-nav me-3">
-        <li class="nav-item"><a class="nav-link" href="#">Profil</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Riwayat</a></li>
-        <li class="nav-item"><a class="nav-link" href="#">Chat</a></li>
-    </ul>
     <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#loginModal">Login</button>
-    <a href="{{ route('register') }}" class="btn btn-outline-primary">Register</a>
+    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#registerRoleModal">Register</button>
 </nav>
 
 <div class="main-content">
@@ -104,10 +96,28 @@
             </div>
             <div class="text-center">
                 <a href="#" class="small">Forgot password?</a><br />
-                <span class="small">No Account? <a href="{{ route('register') }}">Sign Up</a></span>
-            </div>
+<span class="small">No Account? <a href="#" data-bs-toggle="modal" data-bs-target="#registerRoleModal">Sign Up</a></span>            </div>
         </form>
         <div id="loginResponse" class="text-center mt-2 text-danger small"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Register -->
+<div class="modal fade" id="registerRoleModal" tabindex="-1" aria-labelledby="registerRoleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content p-4 rounded-4 text-center">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold w-100" id="registerRoleModalLabel">Daftar Sebagai Apa?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p>Pilih peran Anda untuk melanjutkan pendaftaran:</p>
+        <div class="d-grid gap-2 mt-4">
+          <a href="{{ route('register.counselor') }}" class="btn btn-primary btn-lg">Counselor</a>
+          <a href="{{ route('register.user') }}" class="btn btn-outline-primary btn-lg">User</a>
+        </div>
       </div>
     </div>
   </div>
@@ -180,6 +190,14 @@
       responseBox.innerText = error.message;
     }
   });
+
+  document.addEventListener('DOMContentLoaded', function() {
+        const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+
+        @if(session('success') || session('error'))
+            loginModal.show();
+        @endif
+    });
 </script>
 
 </body>
