@@ -65,7 +65,10 @@
                         <button id="editProfileBtn" class="btn btn-primary btn-lg rounded-pill px-5">Edit Profil</button>
                     </div>
                     <div class="text-center mt-3">
-                        <a href="{{ route('logout') }}" class="btn btn-danger btn-lg rounded-pill px-5">Log Out</a>
+                        <form method="POST" action="{{ route('logout') }}" id="user-profile-logout-form">
+                            @csrf
+                            <button type="submit" class="btn btn-danger btn-lg rounded-pill px-5">Log Out</button>
+                        </form>
                     </div>
                 </div>
             </div>

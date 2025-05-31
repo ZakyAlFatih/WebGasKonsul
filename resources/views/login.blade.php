@@ -178,7 +178,7 @@
         // Redirect sesuai role user
         setTimeout(() => {
           if (data.role === 'counselor') {
-            window.location.href = '/chat-counselor';
+            window.location.href = '{{ route("counselor.dashboard") }}';
           } else {
             window.location.href = '/home';
           }
