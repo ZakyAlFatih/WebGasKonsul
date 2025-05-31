@@ -3,9 +3,9 @@ use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\CounselorController;
-use App\Http\Controllers\ChatController; // Untuk chat
-use App\Http\Controllers\ProfileController; // Untuk profil
-use App\Http\Controllers\HistoryController; // Untuk riwayat
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\HistoryController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
 
@@ -18,17 +18,14 @@ Route::get('/', function () {
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
 
-// Route untuk menampilkan formulir pendaftaran Counselor
-Route::get('/register/counselor', [RegisterController::class, 'showCounselorRegisterForm'])->name('register.counselor');
+// --- Register POST Routes (Hanya POST karena form ada di modal) ---
 // Route POST untuk memproses pendaftaran Counselor
 Route::post('/register/counselor', [RegisterController::class, 'storeCounselor'])->name('register.counselor.store');
 
-// Route untuk menampilkan formulir pendaftaran User
-Route::get('/register/user', [RegisterController::class, 'showUserRegisterForm'])->name('register.user');
 // Route POST untuk memproses pendaftaran User
 Route::post('/register/user', [RegisterController::class, 'storeUser'])->name('register.user.store');
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-Route::get('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // --- Protected Routes (Perlu Login) ---
 Route::middleware(['auth_firebase'])->group(function () {
@@ -38,9 +35,10 @@ Route::middleware(['auth_firebase'])->group(function () {
     Route::get('/home/filter-counselors', [HomeController::class, 'filterCounselorsByBidang'])->name('home.filter');
 
     // --- Profil Routes ---
-    Route::get('/profile', [ProfileController::class, 'showProfile'])->name('profile');
-    Route::post('/profile/update-data', [ProfileController::class, 'updateProfileData'])->name('profile.updateData');
-    Route::post('/profile/update-password', [ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
+    Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'showProfile'])->name('profile');
+    Route::post('/profile/update-data', [App\Http\Controllers\ProfileController::class, 'updateProfileData'])->name('profile.updateData');
+    Route::post('/profile/update-password', [App\Http\Controllers\ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
+    Route::post('/profile/update-avatar', [App\Http\Controllers\ProfileController::class, 'updateAvatar'])->name('profile.updateAvatar');
 
     // --- Detail Konselor ---
     // Route untuk menampilkan halaman detail konselor

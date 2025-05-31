@@ -34,6 +34,8 @@ class ChatController extends Controller
 
         $chatList = [];
         $errorMessage = null;
+        $counselorUids = [];
+        $rawBookingData = [];
 
         try {
             Log::info("Mulai mengambil daftar chat aktif untuk userId: $userId");
@@ -46,14 +48,41 @@ class ChatController extends Controller
             foreach ($bookingSnapshot as $bookingDoc) {
                 if ($bookingDoc->exists()) {
                     $bookingData = $bookingDoc->data();
-                    $chatList[] = [
-                        'chatPartnerId' => $bookingData['counselorId'] ?? '',
-                        'chatPartnerName' => $bookingData['counselorName'] ?? 'Konselor Tidak Dikenal',
-                        'status' => $bookingData['status'] ?? 'booked',
-                        'bookingId' => $bookingDoc->id(),
-                        'scheduleId' => $bookingData['scheduleId'] ?? '',
-                    ];
+                    $bookingData['bookingId'] = $bookingDoc->id();
+                    $rawBookingData[] = $bookingData;
+                    if (isset($bookingData['counselorId']) && !empty($bookingData['counselorId'])) {
+                        $counselorUids[$bookingData['counselorId']] = true;
+                    }
                 }
+            }
+
+            $counselorDataMap = [];
+            if (!empty($counselorUids)) {
+                $counselorRefs = array_map(function($uid) {
+                    return $this->firestore->database()->collection('counselors')->document($uid);
+                }, array_keys($counselorUids));
+
+                $counselorSnapshots = $this->firestore->database()->documents($counselorRefs);
+
+                foreach ($counselorSnapshots as $snapshot) {
+                    if ($snapshot->exists()) {
+                        $counselorDataMap[$snapshot->id()] = $snapshot->data();
+                    }
+                }
+            }
+
+            foreach ($rawBookingData as $bookingData) {
+                $counselorId = $bookingData['counselorId'] ?? null;
+                $counselorDetail = $counselorDataMap[$counselorId] ?? [];
+
+                $chatList[] = [
+                    'chatPartnerId' => $counselorId,
+                    'chatPartnerName' => $bookingData['counselorName'] ?? ($counselorDetail['name'] ?? 'Konselor Tidak Dikenal'),
+                    'chatPartnerAvatar' => $counselorDetail['avatar'] ?? asset('images/default_profile.png'),
+                    'status' => $bookingData['status'] ?? 'booked',
+                    'bookingId' => $bookingData['bookingId'],
+                    'scheduleId' => $bookingData['scheduleId'] ?? '',
+                ];
             }
             Log::info("Total chat aktif ditemukan: " . count($chatList));
 
@@ -68,12 +97,11 @@ class ChatController extends Controller
             'senderId' => $userId,
             'senderName' => $userName,
             'senderAvatar' => $userAvatar,
-            // --- VARIABEL INI SELALU DISEDIAKAN ---
             'selectedReceiverId' => null,
             'selectedReceiverName' => null,
             'selectedBookingId' => null,
             'selectedScheduleId' => null,
-            'messages' => [], // Untuk memastikan 'messages' selalu ada
+            'messages' => [],
         ]);
     }
 
@@ -89,17 +117,20 @@ class ChatController extends Controller
 
         $messages = [];
         $errorMessage = null;
-        $receiverName = 'Partner Chat'; // Default
+        $receiverName = 'Partner Chat';
+        $receiverAvatar = asset('images/default_profile.png');
 
         try {
             $counselorDoc = $this->firestore->database()->collection('counselors')->document($receiverId)->snapshot();
             if ($counselorDoc->exists()) {
                 $receiverName = $counselorDoc->data()['name'] ?? 'Konselor';
+                $receiverAvatar = $counselorDoc->data()['avatar'] ?? asset('images/default_profile.png');
             }
 
             Log::info("Memuat riwayat pesan antara $userId dan $receiverId untuk booking $bookingId");
 
             $chatSnapshot = $this->firestore->database()->collection('chats')
+                ->where('bookingId', '=', $bookingId)
                 ->where('senderId', 'in', [$userId, $receiverId])
                 ->where('receiverId', 'in', [$userId, $receiverId])
                 ->orderBy('timestamp')
@@ -107,7 +138,22 @@ class ChatController extends Controller
 
             foreach ($chatSnapshot as $messageDoc) {
                 if ($messageDoc->exists()) {
-                    $messages[] = $messageDoc->data();
+                    $messageData = $messageDoc->data();
+
+                    $timestampObject = $messageData['timestamp'];
+                    $carbonTimestamp = null;
+                    if ($timestampObject instanceof \Google\Cloud\Core\Timestamp) {
+                        $carbonTimestamp = \Carbon\Carbon::parse($timestampObject->get());
+                    } else {
+                        $carbonTimestamp = \Carbon\Carbon::parse($timestampObject);
+                    }
+
+                    if ($carbonTimestamp) {
+                        $messageData['timestamp_formatted'] = $carbonTimestamp->timezone(config('app.timezone'))->format('H:i');
+                    } else {
+                        $messageData['timestamp_formatted'] = 'Invalid Time';
+                    }
+                    $messages[] = $messageData;
                 }
             }
             usort($messages, function($a, $b) {
@@ -128,9 +174,9 @@ class ChatController extends Controller
             'senderId' => $userId,
             'senderName' => $userName,
             'senderAvatar' => $userAvatar,
-            // --- VARIABEL INI SELALU DISEDIAKAN ---
             'selectedReceiverId' => $receiverId,
             'selectedReceiverName' => $receiverName,
+            'selectedReceiverAvatar' => $receiverAvatar,
             'selectedBookingId' => $bookingId,
             'selectedScheduleId' => $scheduleId,
             'messages' => $messages,
@@ -150,6 +196,7 @@ class ChatController extends Controller
             'content' => 'required|string|max:500',
             'senderName' => 'required|string',
             'senderAvatar' => 'nullable|string|url',
+            'bookingId' => 'required|string',
         ]);
 
         $senderId = Session::get('uid');
@@ -166,10 +213,12 @@ class ChatController extends Controller
                 'senderName' => $request->senderName,
                 'senderAvatar' => $request->senderAvatar,
                 'isRead' => false,
+                'bookingId' => $request->bookingId,
+                'participants' => [$senderId, $request->receiverId],
             ];
 
             $this->firestore->database()->collection('chats')->add($message);
-            Log::info("Pesan berhasil dikirim dari $senderId ke {$request->receiverId}");
+            Log::info("Pesan berhasil dikirim dari $senderId ke {$request->receiverId} untuk booking {$request->bookingId}");
 
             return response()->json(['success' => true, 'message' => 'Pesan terkirim.']);
 
@@ -190,7 +239,7 @@ class ChatController extends Controller
         $request->validate([
             'bookingId' => 'required|string',
             'scheduleId' => 'required|string',
-            'receiverId' => 'required|string', // counselorId
+            'receiverId' => 'required|string',
         ]);
 
         $userId = Session::get('uid');
@@ -200,26 +249,41 @@ class ChatController extends Controller
 
         $bookingId = $request->bookingId;
         $scheduleId = $request->scheduleId;
-        $counselorId = $request->receiverId; // Nama receiverId di frontend adalah counselorId di backend
+        // $counselorId = $request->receiverId; // Tidak dipakai untuk hapus chat
 
         try {
             $this->firestore->database()->runTransaction(function (Transaction $transaction) use ($bookingId, $scheduleId) {
                 $db = $this->firestore->database();
 
-                // 1. Hapus dokumen booking
+                // Hapus dokumen booking
                 $bookingRef = $db->collection('bookings')->document($bookingId);
                 $transaction->delete($bookingRef);
                 Log::info("Dokumen booking dihapus: $bookingId");
 
-                // 2. Set isBooked = false pada schedule
+                // Set isBooked = false pada schedule
                 $scheduleRef = $db->collection('schedules')->document($scheduleId);
                 $transaction->update($scheduleRef, [
                     ['path' => 'isBooked', 'value' => false]
                 ]);
                 Log::info("Status isBooked pada schedule $scheduleId diupdate ke false");
+
+                // Hapus SEMUA chat yang berhubungan dengan bookingId ini
+                $chatCollectionRef = $db->collection('chats');
+                $chatQuery = $chatCollectionRef->where('bookingId', '=', $bookingId);
+
+                $chatDocs = $chatQuery->documents();
+                $deletedChatCount = 0;
+
+                foreach ($chatDocs as $chatDoc) {
+                    if ($chatDoc->exists()) {
+                        $transaction->delete($chatDoc->reference());
+                        $deletedChatCount++;
+                    }
+                }
+                Log::info("Total $deletedChatCount pesan chat terkait booking $bookingId dihapus.");
             });
 
-            return response()->json(['success' => true, 'message' => 'Sesi berhasil diselesaikan. Jadwal sudah tersedia kembali.']);
+            return response()->json(['success' => true, 'message' => 'Sesi berhasil diselesaikan. Jadwal sudah tersedia kembali dan riwayat chat dihapus.']);
 
         } catch (\Throwable $e) {
             Log::error('Error menyelesaikan sesi: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -236,7 +300,8 @@ class ChatController extends Controller
     public function getSessionMessages(Request $request)
     {
         $request->validate([
-            'receiverId' => 'required|string', // Ini adalah UID Konselor
+            'receiverId' => 'required|string',
+            'bookingId' => 'required|string',
         ]);
 
         $userId = Session::get('uid');
@@ -245,12 +310,15 @@ class ChatController extends Controller
         }
 
         $receiverId = $request->receiverId;
+        $bookingId = $request->bookingId; // Ambil bookingId dari request
         $messages = [];
 
         try {
-            Log::info("Memuat pesan chat untuk sesi AJAX antara $userId dan $receiverId.");
+            Log::info("Memuat pesan chat untuk sesi AJAX antara $userId dan $receiverId untuk booking $bookingId.");
 
+            // Menggunakan kombinasi senderId, receiverId, dan bookingId untuk query
             $chatSnapshot = $this->firestore->database()->collection('chats')
+                ->where('bookingId', '=', $bookingId)
                 ->where('senderId', 'in', [$userId, $receiverId])
                 ->where('receiverId', 'in', [$userId, $receiverId])
                 ->orderBy('timestamp')
@@ -259,13 +327,24 @@ class ChatController extends Controller
             foreach ($chatSnapshot as $messageDoc) {
                 if ($messageDoc->exists()) {
                     $messageData = $messageDoc->data();
-                    // Format timestamp agar mudah digunakan di JavaScript
-                    $messageData['timestamp_formatted'] = \Carbon\Carbon::parse($messageData['timestamp'])->format('H:i');
+
+                    $timestampObject = $messageData['timestamp'];
+                    $carbonTimestamp = null;
+                    if ($timestampObject instanceof \Google\Cloud\Core\Timestamp) {
+                        $carbonTimestamp = \Carbon\Carbon::parse($timestampObject->get());
+                    } else {
+                        $carbonTimestamp = \Carbon\Carbon::parse($timestampObject);
+                    }
+
+                    if ($carbonTimestamp) {
+                        $messageData['timestamp_formatted'] = $carbonTimestamp->timezone(config('app.timezone'))->format('H:i');
+                    } else {
+                        $messageData['timestamp_formatted'] = 'Invalid Time';
+                    }
                     $messages[] = $messageData;
                 }
             }
 
-            // Urutkan pesan lagi untuk memastikan konsistensi
             usort($messages, function($a, $b) {
                 $tsA = $a['timestamp'] instanceof \Google\Cloud\Core\Timestamp ? $a['timestamp']->get()->getTimestamp() : strtotime($a['timestamp']);
                 $tsB = $b['timestamp'] instanceof \Google\Cloud\Core\Timestamp ? $b['timestamp']->get()->getTimestamp() : strtotime($b['timestamp']);

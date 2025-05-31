@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log; // Untuk logging
+use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Firestore;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use Kreait\Firebase\Exception\AuthException;
@@ -43,7 +43,6 @@ class ProfileController extends Controller
 
             if ($userDoc->exists()) {
                 $userData = $userDoc->data();
-                // Pastikan ada nilai default jika field tidak ada
                 $userData['avatar'] = $userData['avatar'] ?? asset('images/default_profile.png');
                 $userData['name'] = $userData['name'] ?? 'Nama Tidak Tersedia';
                 $userData['email'] = $userData['email'] ?? 'Email Tidak Tersedia';
@@ -74,48 +73,52 @@ class ProfileController extends Controller
     public function updateProfileData(Request $request)
     {
         $uid = Session::get('uid');
-        Log::info('Attempting to update profile for UID: ' . $uid);
+        Log::info('Attempting to update profile data for UID: ' . $uid);
 
         if (!$uid) {
-            Log::warning('Update profile attempt without UID in session.');
+            Log::warning('Update profile data attempt without UID in session.');
             return response()->json(['success' => false, 'message' => 'User not authenticated.'], 401);
         }
+
+        // Custom validation messages for updateProfileData
+        $messages = [
+            'name.required' => 'Nama harus diisi.',
+            'name.string' => 'Nama harus berupa teks.',
+            'name.max' => 'Nama tidak boleh lebih dari :max karakter.',
+            'phone.string' => 'Nomor telepon harus berupa teks.',
+            'phone.max' => 'Nomor telepon tidak boleh lebih dari :max karakter.',
+            'phone.regex' => 'Nomor telepon hanya boleh berisi angka dan diawali kode telepon.',
+        ];
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20', // Sesuaikan validasi phone (Tidak dipakai)
-            // 'avatar' => 'nullable|string|url', // Jika ingin mengupload URL avatar dari client
-        ]);
+            'phone' => ['nullable', 'string', 'max:20', 'regex:/^\+?\s*\d[\d\s]*$/'],
+        ], $messages);
 
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'errors' => $validator->errors()->all()], 422);
-        }
-
-        $uid = Session::get('uid');
-        if (!$uid) {
-            return response()->json(['success' => false, 'message' => 'User not authenticated.'], 401);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
         try {
             $updatedData = [
                 'name' => $request->name,
                 'phone' => $request->phone,
-                // 'avatar' => $request->avatar, // Menangani upload avatar via API terpisah atau dari client (Tidak dipakai sekarang)
             ];
 
-            // Jika ingin mengupdate email di Firebase Auth juga
-            // karena butuh re-authentication. Untuk saat ini, asumsikan email tidak diubah lewat sini.
             Log::info('Data sent to Firestore for update: ' . json_encode($updatedData));
             $this->firestore->database()->collection('users')->document($uid)->set($updatedData, ['merge' => true]);
 
-            // Fetch updated data to return to client
+            // Ambil data terbaru dari Firestore dan update session
             $userDoc = $this->firestore->database()->collection('users')->document($uid)->snapshot();
             $updatedUserData = $userDoc->exists() ? $userDoc->data() : [];
+
+            // Update Session juga setelah berhasil mengubah nama
+            Session::put('userName', $updatedUserData['name'] ?? Session::get('userName'));
 
             return response()->json([
                 'success' => true,
                 'message' => 'Profil berhasil diperbarui.',
-                'userData' => $updatedUserData,
+                'userData' => $updatedUserData, // Kirim data terbaru ke frontend
             ]);
 
         } catch (FirebaseException $e) {
@@ -128,6 +131,54 @@ class ProfileController extends Controller
     }
 
     /**
+     * Memperbarui URL avatar profil pengguna di Firestore.
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateAvatar(Request $request)
+    {
+        $uid = Session::get('uid');
+        Log::info('Attempting to update avatar for UID: ' . $uid);
+
+        if (!$uid) {
+            Log::warning('Update avatar attempt without UID in session.');
+            return response()->json(['success' => false, 'message' => 'User not authenticated.'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'avatar_url' => 'required|string|url|max:2048',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        try {
+            $newAvatarUrl = $request->avatar_url;
+
+            $this->firestore->database()->collection('users')->document($uid)->set([
+                'avatar' => $newAvatarUrl
+            ], ['merge' => true]);
+
+            // Update session's userAvatar
+            Session::put('userAvatar', $newAvatarUrl);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Foto profil berhasil diperbarui.',
+                'avatar_url' => $newAvatarUrl
+            ]);
+
+        } catch (FirebaseException $e) {
+            Log::error('Error updating avatar in Firebase: ' . $e->getMessage() . ' - UID: ' . $uid);
+            return response()->json(['success' => false, 'message' => 'Gagal memperbarui foto profil: ' . $e->getMessage()], 500);
+        } catch (\Throwable $e) {
+            Log::error('Unexpected error updating avatar: ' . $e->getMessage() . ' - Stack Trace: ' . $e->getTraceAsString() . ' - UID: ' . $uid);
+            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan saat memperbarui foto profil: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Memperbarui password pengguna di Firebase Authentication.
      * Memverifikasi password lama sebelum mengizinkan perubahan.
      * @param Request $request
@@ -135,7 +186,7 @@ class ProfileController extends Controller
      */
     public function updatePassword(Request $request)
     {
-        // Custom validation messages
+        // Message untuk validasi
         $messages = [
             'current_password.required' => 'Mohon masukkan password saat ini.',
             'new_password.required' => 'Password baru harus diisi.',
@@ -158,7 +209,6 @@ class ProfileController extends Controller
         }
 
         try {
-            // 1. Dapatkan user Firebase berdasarkan UID
             $user = $this->auth->getUser($uid);
             $userEmail = $user->email;
 
@@ -167,18 +217,15 @@ class ProfileController extends Controller
                 return response()->json(['success' => false, 'message' => 'Tidak dapat memverifikasi password lama karena email tidak ditemukan.'], 400);
             }
 
-            // 2. Verifikasi password lama dengan melakukan sign-in programatik
             try {
                 $signInResult = $this->auth->signInWithEmailAndPassword($userEmail, $request->current_password);
                 Log::info('Verifikasi password lama berhasil untuk UID: ' . $uid);
 
             } catch (FirebaseFailedToSignIn $e) {
                 Log::warning('Verifikasi password lama gagal untuk UID: ' . $uid . ': ' . $e->getMessage());
-                // Mengubah pesan error agar sesuai dengan permintaan pengguna
-                return response()->json(['success' => false, 'message' => 'Mohon masukkan password saat ini yang benar!'], 401); // <-- Pesan kustom untuk password lama salah
+                return response()->json(['success' => false, 'message' => 'Mohon masukkan password saat ini yang benar!'], 401);
             }
 
-            // 3. Jika password lama benar, lanjutkan dengan mengganti password
             $this->auth->changeUserPassword($uid, $request->new_password);
 
             return response()->json([
