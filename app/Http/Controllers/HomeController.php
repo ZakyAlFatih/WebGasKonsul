@@ -20,7 +20,7 @@ class HomeController extends Controller
     {
         $this->firestore = app('firebase.firestore');
         $this->auth = app('firebase.auth');
-        $this->groqApiKey = env('GROQ_API_KEY'); // Pastikan ini ada di .env
+        $this->groqApiKey = env('GROQ_API_KEY');
     }
 
     /**
@@ -41,9 +41,9 @@ class HomeController extends Controller
      */
     public function showUserHome()
     {
-        $categories = []; // Akan berisi data kategori dan konselor yang dikelompokkan
-        $userName = 'User'; // Default name
-        $errorMessage = null; // Untuk menampilkan error saat load data
+        $categories = [];
+        $userName = 'User';
+        $errorMessage = null;
 
         try {
             // Ambil nama user dari Firestore berdasarkan UID di sesi
@@ -52,7 +52,6 @@ class HomeController extends Controller
                 $userDoc = $this->firestore->database()->collection('users')->document($uid)->snapshot();
                 if ($userDoc->exists()) {
                     $userName = $userDoc->data()['name'] ?? 'User';
-                    // $userAvatar = $userDoc->data()['avatar'] ?? asset('images/default_profile.png'); // Bisa juga mengambil URL avatar jika ada
                 }
             }
 
@@ -64,7 +63,7 @@ class HomeController extends Controller
                 if ($document->exists()) {
                     $data = $document->data();
                     $bidang = $data['bidang'] ?? 'Unknown Bidang'; // Fallback
-                    $uid = $document->id(); // UID adalah ID dokumen di Firestore
+                    $uid = $document->id();
 
                     // Ekstrak ketersediaan konselor
                     $availability = [
@@ -85,14 +84,14 @@ class HomeController extends Controller
                             "uid" => $uid,
                             "name" => $data['name'] ?? 'Unknown',
                             "availability" => $availability,
-                            "image" => $data['image'] ?? asset('images/default_profile.png'), // Default placeholder gambar
+                            "image" => $data['avatar'] ?? asset('images/default_profile.png'), // Default placeholder gambar
                             "email" => $data['email'] ?? 'No Email',
                         ];
                     }
                 }
             }
 
-            // Transformasi map menjadi struktur categories yang diharapkan untuk view
+            // Transformasi map menjadi struktur categories
             foreach ($groupedByBidang as $bidangName => $counselorsInBidang) {
                 $categories[] = [
                     "category" => $bidangName,
@@ -108,7 +107,6 @@ class HomeController extends Controller
             $errorMessage = 'Terjadi kesalahan saat memuat halaman: ' . $e->getMessage();
         }
 
-        // Kirim data ke view home_user.blade.php
         return view('home_user', [
             'categories' => $categories,
             'userName' => $userName,
@@ -221,7 +219,7 @@ class HomeController extends Controller
                         "uid" => $uid,
                         "name" => $data['name'] ?? 'Unknown',
                         "availability" => $availability,
-                        "image" => $data['image'] ?? asset('images/default_profile.png'),
+                        "image" => $data['avatar'] ?? asset('images/default_profile.png'),
                         "email" => $data['email'] ?? 'No Email',
                     ];
                 }

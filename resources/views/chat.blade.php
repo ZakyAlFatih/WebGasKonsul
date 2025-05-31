@@ -3,40 +3,8 @@
 @section('title', 'Chat Konselor - GasKonsul')
 
 @section('content')
-<div class="container-fluid bg-light py-4" style="min-height: 100vh;">
-    {{-- Navbar di Bagian Atas --}}
-    <div class="d-flex justify-content-between align-items-center py-3 px-4 bg-white shadow-sm mb-4">
-        <div class="d-flex align-items-center">
-            @if(isset($selectedReceiverId) && $selectedReceiverId)
-                <button id="backToListBtn" class="btn btn-link text-primary me-2"><i class="bi bi-arrow-left"></i> Kembali</button>
-            @else
-                <a href="{{ route('home') }}" class="btn btn-link text-primary me-2"><i class="bi bi-arrow-left"></i> Kembali</a>
-            @endif
-            <img src="{{ asset('images/gasKonsul_logo.png') }}" alt="Logo" width="40" class="me-2">
-            <h4 class="text-primary fw-bold m-0" id="chatTitle">
-                @if(isset($selectedReceiverName) && $selectedReceiverName)
-                    {{ $selectedReceiverName }}
-                @else
-                    Daftar Chat
-                @endif
-            </h4>
-        </div>
-        <div class="d-flex align-items-center">
-            {{-- Navigasi Lain --}}
-            <a href="{{ route('home') }}" class="me-3 text-decoration-none text-dark">Beranda</a>
-            <a href="{{ route('profile') }}" class="me-3 text-decoration-none text-dark">Profil</a>
-            <a href="{{ route('history') }}" class="me-3 text-decoration-none text-dark">Riwayat</a>
-            <a href="{{ route('chat') }}" class="me-3 text-decoration-none text-dark">Chat</a>
-            {{-- Info User --}}
-            <div class="d-flex align-items-center bg-white border rounded-pill px-3 py-1">
-                <img src="{{ $senderAvatar }}" alt="User" class="rounded-circle" width="32" height="32" style="object-fit: cover;">
-                <span class="ms-2">{{ $senderName }}</span>
-            </div>
-        </div>
-    </div>
-
     {{-- Notifikasi Error/Sukses --}}
-    <div class="container mt-3">
+    <div class="container mt-3 mx-auto" style="max-width: 700px;">
         @if(isset($errorMessage) && $errorMessage)
             <div class="alert alert-danger text-center">
                 {{ $errorMessage }}
@@ -56,10 +24,11 @@
     </div>
 
     {{-- Konten Utama Chat --}}
-    <div class="container bg-white rounded-4 p-4 shadow-sm" style="max-width: 700px; min-height: 70vh; display: flex; flex-direction: column;">
+    <div class="container bg-white rounded-4 p-4 shadow-sm mx-auto" style="max-width: 700px; min-height: 70vh; display: flex; flex-direction: column;">
 
-        {{-- Daftar Konselor yang Dibooking (Tampilan Awal) --}}
+        {{-- Daftar Konselor yang Dibooking --}}
         <div id="chatListSection" style="display: {{ (isset($selectedReceiverId) && $selectedReceiverId) ? 'none' : 'block' }}; flex-grow: 1;">
+            <h5 class="text-primary fw-bold mb-4">Sesi Chat Aktif</h5>
             @if(empty($chatList))
                 <div class="text-center py-5">
                     <img src="{{ asset('images/gasKonsul_logo.png') }}" alt="Logo" width="150" height="150" style="object-fit: contain;">
@@ -68,15 +37,12 @@
                     <p class="text-muted fs-5">Silakan booking konselor terlebih dahulu.</p>
                 </div>
             @else
-                <h5 class="text-primary fw-bold mb-4">Sesi Chat Aktif</h5>
                 <div class="list-group">
                     @foreach($chatList as $chat)
                         <a href="{{ route('chat.show', ['receiverId' => $chat['chatPartnerId'], 'bookingId' => $chat['bookingId'], 'scheduleId' => $chat['scheduleId']]) }}"
                            class="list-group-item list-group-item-action py-3 mb-2 rounded-3 shadow-sm chat-item">
                             <div class="d-flex align-items-center">
-                                <div class="avatar-circle me-3 bg-primary text-white d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; border-radius: 50%;">
-                                    <i class="bi bi-person-fill" style="font-size: 1.8rem;"></i>
-                                </div>
+                                <img src="{{ $chat['chatPartnerAvatar'] ?? asset('images/default_profile.png') }}" alt="Avatar" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;">
                                 <div>
                                     <h6 class="mb-1 fw-bold">{{ $chat['chatPartnerName'] }}</h6>
                                     <small class="text-muted">Sesi Aktif</small>
@@ -88,14 +54,23 @@
             @endif
         </div>
 
-        {{-- UI Chat Spesifik (Tersembunyi Awalnya) --}}
+        {{-- UI Chat Spesifik --}}
         <div id="chatUISession" style="display: {{ (isset($selectedReceiverId) && $selectedReceiverId) ? 'flex' : 'none' }}; flex-direction: column; flex-grow: 1;">
             @if(isset($selectedReceiverId) && $selectedReceiverId)
-                <div class="chat-messages-container flex-grow-1 overflow-auto p-2" style="background-color: #f8f9fa;">
+                {{-- HEADER CHAT DENGAN TOMBOL BACK --}}
+                <div class="d-flex align-items-center mb-3 pb-2 border-bottom">
+                    <button id="backToChatListBtn" class="btn btn-sm btn-outline-secondary me-2">
+                        <i class="bi bi-arrow-left"></i> Kembali
+                    </button>
+                    <img src="{{ $selectedReceiverAvatar ?? asset('images/default_profile.png') }}" alt="Avatar" class="rounded-circle me-2" style="width: 40px; height: 40px; object-fit: cover;">
+                    <h5 class="mb-0 fw-bold">{{ $selectedReceiverName ?? 'Partner Chat' }}</h5>
+                </div>
+
+                <div class="chat-messages-container flex-grow-1 overflow-auto p-2" style="background-color: #f8f9fa; max-height: calc(70vh - 120px - 60px);"> {{-- Adjusted max-height --}}
                     @forelse($messages as $message)
                         <div class="d-flex mb-2 {{ $message['senderId'] == $senderId ? 'justify-content-end' : 'justify-content-start' }}">
                             <div class="card p-2 rounded-3 shadow-sm" style="max-width: 70%; background-color: {{ $message['senderId'] == $senderId ? '#d1e7dd' : '#f0f2f5' }};">
-                                <small class="text-muted text-end">{{ \Carbon\Carbon::parse($message['timestamp'])->format('H:i') }}</small>
+                                <small class="text-muted text-end">{{ $message['timestamp_formatted'] }}</small>
                                 <p class="mb-0">{{ $message['content'] }}</p>
                             </div>
                         </div>
@@ -112,34 +87,30 @@
             @endif
         </div>
     </div>
-</div>
 @endsection
 
 @section('scripts')
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const chatListSection = document.getElementById('chatListSection');
         const chatUISession = document.getElementById('chatUISession');
-        const backToListBtn = document.getElementById('backToListBtn');
-        const chatTitle = document.getElementById('chatTitle');
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
         const completeSessionBtn = document.getElementById('completeSessionBtn');
         const chatAjaxAlert = document.getElementById('chatAjaxAlert');
         const chatMessagesContainer = document.querySelector('.chat-messages-container');
+        const backToChatListBtn = document.getElementById('backToChatListBtn'); // Get the new back button
 
         const senderId = "{{ $senderId }}";
         const senderName = "{{ $senderName }}";
-        const senderAvatar = "{{ $senderAvatar }}";
+        const senderAvatar = "{{ Session::get('userAvatar') ?? asset('images/default_profile.png') }}";
 
         let selectedReceiverId = "{{ $selectedReceiverId }}";
         let selectedReceiverName = "{{ $selectedReceiverName }}";
+        let selectedReceiverAvatar = "{{ $selectedReceiverAvatar ?? asset('images/default_profile.png') }}";
         let selectedBookingId = "{{ $selectedBookingId }}";
         let selectedScheduleId = "{{ $selectedScheduleId }}";
 
-        // Fungsi Helper untuk Notifikasi
         function showAlert(message, type) {
             chatAjaxAlert.textContent = message;
             chatAjaxAlert.className = `alert mt-3 text-center alert-${type}`;
@@ -149,20 +120,10 @@
             }, 5000);
         }
 
-        // --- Event Listeners ---
-
-        // Tombol kembali ke daftar chat
-        if (backToListBtn) {
-            backToListBtn.addEventListener('click', function() {
-                window.location.href = "{{ route('chat') }}"; // Kembali ke route daftar chat
-            });
-        }
-
-        // --- FUNGSI MENGGAMBAR (RENDER) PESAN KE DOM ---
         function renderMessages(messages) {
-            if (!chatMessagesContainer) return; // Keluar jika container tidak ditemukan
+            if (!chatMessagesContainer) return;
 
-            chatMessagesContainer.innerHTML = ''; // Hapus pesan yang sudah ada
+            chatMessagesContainer.innerHTML = '';
 
             if (messages.length === 0) {
                 chatMessagesContainer.innerHTML = '<p class="text-center text-muted">Belum ada pesan dalam sesi ini. Mulai chat Anda!</p>';
@@ -181,12 +142,14 @@
                 `;
                 chatMessagesContainer.insertAdjacentHTML('beforeend', messageHtml);
             });
-            scrollToBottom(); // Scroll ke bawah setelah me-render pesan
+            scrollToBottom();
         }
 
-        // --- FUNGSI MENGAMBIL DAN MEMPERBARUI PESAN DENGAN AJAX ---
         async function fetchAndUpdateMessages() {
-            if (!selectedReceiverId) return; // Hanya ambil jika sesi chat aktif
+            if (!selectedReceiverId || !selectedBookingId || selectedReceiverId === '' || selectedBookingId === '') {
+                console.warn('Cannot fetch messages: Missing receiverId or bookingId.');
+                return;
+            }
 
             try {
                 const response = await fetch('{{ route('chat.getMessages') }}', {
@@ -197,14 +160,15 @@
                         'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify({
-                        receiverId: selectedReceiverId // Kirim receiverId untuk mengambil pesan chat ini
+                        receiverId: selectedReceiverId,
+                        bookingId: selectedBookingId
                     })
                 });
 
                 const data = await response.json();
 
                 if (response.ok && data.success) {
-                    renderMessages(data.messages); // Panggil fungsi render dengan pesan yang baru diambil
+                    renderMessages(data.messages);
                 } else {
                     showAlert(data.message || 'Gagal memuat pesan baru.', 'danger');
                 }
@@ -214,7 +178,6 @@
             }
         }
 
-        // --- Event Listener Pengiriman Pesan ---
         if (sendMessageBtn) {
             sendMessageBtn.addEventListener('click', async function() {
                 const content = messageInput.value.trim();
@@ -223,12 +186,12 @@
                     return;
                 }
 
-                if (!selectedReceiverId) {
-                    showAlert('Pilih konselor terlebih dahulu untuk mengirim pesan.', 'danger');
+                if (!selectedReceiverId || selectedReceiverId === '' || !selectedBookingId || selectedBookingId === '') {
+                    showAlert('Pilih konselor atau sesi chat terlebih dahulu untuk mengirim pesan.', 'danger');
                     return;
                 }
 
-                sendMessageBtn.disabled = true; // Nonaktifkan tombol saat mengirim
+                sendMessageBtn.disabled = true;
 
                 try {
                     const response = await fetch('{{ route('chat.sendMessage') }}', {
@@ -243,14 +206,14 @@
                             content: content,
                             senderName: senderName,
                             senderAvatar: senderAvatar,
+                            bookingId: selectedBookingId,
                         })
                     });
 
                     const data = await response.json();
 
                     if (response.ok && data.success) {
-                        messageInput.value = ''; // Kosongkan input
-                        // PANGGIL FUNGSI UNTUK MEMPERBARUI PESAN SETELAH KIRIM
+                        messageInput.value = '';
                         await fetchAndUpdateMessages();
                     } else {
                         showAlert(data.message || 'Gagal mengirim pesan.', 'danger');
@@ -259,24 +222,23 @@
                     showAlert('Terjadi kesalahan jaringan atau server.', 'danger');
                     console.error('Error sending message:', error);
                 } finally {
-                    sendMessageBtn.disabled = false; // Aktifkan kembali tombol
+                    sendMessageBtn.disabled = false;
                 }
             });
         }
 
-        // Selesaikan Sesi
         if (completeSessionBtn) {
             completeSessionBtn.addEventListener('click', async function() {
-                if (!selectedBookingId || !selectedScheduleId || !selectedReceiverId) {
+                if (!selectedBookingId || selectedBookingId === '' || !selectedScheduleId || selectedScheduleId === '' || !selectedReceiverId || selectedReceiverId === '') {
                     showAlert('Data sesi tidak lengkap untuk diselesaikan.', 'danger');
                     return;
                 }
 
-                if (!confirm('Apakah Anda yakin ingin menyelesaikan sesi chat ini?')) {
+                if (!confirm('Apakah Anda yakin ingin menyelesaikan sesi chat ini? Semua riwayat chat untuk sesi ini akan dihapus.')) {
                     return;
                 }
 
-                completeSessionBtn.disabled = true; // Disable tombol saat memproses
+                completeSessionBtn.disabled = true;
                 showAlert('Menyelesaikan sesi...', 'info');
 
                 try {
@@ -298,8 +260,8 @@
                     if (response.ok && data.success) {
                         showAlert(data.message, 'success');
                         setTimeout(() => {
-                            window.location.href = "{{ route('chat') }}"; // Kembali ke daftar chat
-                        }, 2000); // Tunggu sebentar sebelum redirect
+                            window.location.href = "{{ route('chat') }}";
+                        }, 2000);
                     } else {
                         showAlert(data.message || 'Gagal menyelesaikan sesi.', 'danger');
                     }
@@ -307,21 +269,28 @@
                     showAlert('Terjadi kesalahan jaringan atau server.', 'danger');
                     console.error('Error completing session:', error);
                 } finally {
-                    completeSessionBtn.disabled = false; // Aktifkan kembali tombol
+                    completeSessionBtn.disabled = false;
                 }
             });
         }
 
-        // Arahkan scroll ke bawah di chat messages container
         function scrollToBottom() {
             const chatMessagesContainer = document.querySelector('.chat-messages-container');
             if (chatMessagesContainer) {
                 chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
             }
         }
-        // Panggil saat DOMContentLoaded dan mungkin setelah pesan baru ditambahkan
-        if (selectedReceiverId) {
-            scrollToBottom(); // Pastikan scroll ke bawah untuk pesan terbaru
+
+        // --- Handle Back Button Click ---
+        if (backToChatListBtn) {
+            backToChatListBtn.addEventListener('click', function() {
+                window.location.href = "{{ route('chat') }}";
+            });
+        }
+
+        if (selectedReceiverId && selectedReceiverId !== '' && selectedBookingId && selectedBookingId !== '') {
+            scrollToBottom();
+            fetchAndUpdateMessages();
         }
     });
 </script>
