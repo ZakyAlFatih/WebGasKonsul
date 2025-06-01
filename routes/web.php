@@ -108,7 +108,7 @@ Route::middleware(['auth_firebase'])->group(function () {
     Route::post('/chat/complete-session', [ChatController::class, 'completeSession'])->name('chat.completeSession');
     Route::post('/chat/get-session-messages', [ChatController::class, 'getSessionMessages'])->name('chat.getMessages');
 
-    Route::get('/chat-counselor', [ChatController::class, 'showChatCounselor'])->name('chat-counselor'); // Evaluasi ulang jika perlu
+    // Route::get('/chat-counselor', [ChatController::class, 'showChatCounselor'])->name('chat-counselor'); // Evaluasi ulang jika perlu
 });
 
 
