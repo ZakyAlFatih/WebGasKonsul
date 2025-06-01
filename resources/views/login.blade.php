@@ -238,7 +238,7 @@
 <script>
     // Konfigurasi Firebase
     const firebaseConfig = {
-        apiKey: "<API>",
+        apiKey: "AIzaSyAWFHOHpnWHn6LQ8hcfo8qJr1Ug5Rscs7E",
         authDomain: "PROJECT_ID.firebaseapp.com",
         projectId: "PROJECT_ID",
     };
@@ -344,7 +344,7 @@
 
                 setTimeout(() => {
                     if (data.role === 'counselor') {
-                        window.location.href = '/chat-counselor';
+                        window.location.href = '{{ route("counselor.dashboard") }}';
                     } else {
                         window.location.href = '/home';
                     }

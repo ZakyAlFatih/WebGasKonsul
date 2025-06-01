@@ -179,6 +179,45 @@ class ProfileController extends Controller
     }
 
     /**
+     * Menghapus URL avatar profil pengguna di Firestore (mengatur ke default).
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function removeAvatar()
+    {
+        $uid = Session::get('uid');
+        Log::info('Attempting to remove avatar for UID: ' . $uid);
+
+        if (!$uid) {
+            Log::warning('Remove avatar attempt without UID in session.');
+            return response()->json(['success' => false, 'message' => 'User not authenticated.'], 401);
+        }
+
+        try {
+            $defaultAvatarUrl = asset('images/default_profile.png');
+
+            $this->firestore->database()->collection('users')->document($uid)->set([
+                'avatar' => null
+            ], ['merge' => true]);
+
+            // Update session's userAvatar ke default
+            Session::put('userAvatar', $defaultAvatarUrl);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Foto profil berhasil diatur ke default.',
+                'avatar_url' => $defaultAvatarUrl
+            ]);
+
+        } catch (FirebaseException $e) {
+            Log::error('Error removing avatar from Firebase: ' . $e->getMessage() . ' - UID: ' . $uid);
+            return response()->json(['success' => false, 'message' => 'Gagal mengatur foto profil ke default: ' . $e->getMessage()], 500);
+        } catch (\Throwable $e) {
+            Log::error('Unexpected error removing avatar: ' . $e->getMessage() . ' - Stack Trace: ' . $e->getTraceAsString() . ' - UID: ' . $uid);
+            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan saat mengatur foto profil ke default: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Memperbarui password pengguna di Firebase Authentication.
      * Memverifikasi password lama sebelum mengizinkan perubahan.
      * @param Request $request
@@ -196,7 +235,7 @@ class ProfileController extends Controller
 
         $validator = Validator::make($request->all(), [
             'current_password' => 'required|string',
-            'new_password' => 'required|string|min:8|confirmed',
+            'new_password' => 'required|string|min:6|confirmed',
         ], $messages);
 
         if ($validator->fails()) {

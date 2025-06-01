@@ -79,7 +79,8 @@
                             <div class="mb-3">
                                 <label for="edit_email" class="form-label text-primary fw-bold">Email</label>
                                 <input type="email" class="form-control" id="edit_email" name="email" value="{{ $userData['email'] ?? '' }}" readonly style="background-color: #e8f1ff; border-radius: 10px;">
-                                <small class="form-text text-muted">Email tidak dapat diubah di sini.</small>
+                                {{-- Baris ini yang akan dihapus --}}
+                                {{-- <small class="form-text text-muted">Email tidak dapat diubah di sini.</small> --}}
                             </div>
                             <div class="mb-3">
                                 <label for="edit_phone" class="form-label text-primary fw-bold">Phone</label>
@@ -147,6 +148,7 @@
                     </div>
                     <div class="d-flex justify-content-end">
                         <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Batal</button>
+                        <button type="button" id="removeAvatarBtn" class="btn btn-warning me-2">Atur ke Default</button>
                         <button type="submit" class="btn btn-primary" id="saveAvatarBtn">Simpan Foto</button>
                     </div>
                 </form>
@@ -185,6 +187,11 @@
         const editProfileNameDisplay = document.getElementById('editProfileNameDisplay');
         const viewProfileNameDisplay = document.getElementById('display_name_view');
         const viewProfileNameAvatarDisplay = document.getElementById('display_name_avatar');
+
+        // Tombol remove avatar
+        const removeAvatarBtn = document.getElementById('removeAvatarBtn');
+        const defaultAvatarPath = '{{ asset('images/default_profile.png') }}';
+
 
         function showAlert(message, type) {
             profileAjaxAlert.textContent = message;
@@ -336,8 +343,8 @@
                     if (newPassword !== newPasswordConfirmation) {
                         showValidationErrors({new_password_confirmation: ['Konfirmasi password baru tidak cocok!']});
                         updatePasswordSuccess = false;
-                    } else if (newPassword.length < 8) {
-                        showValidationErrors({new_password: ['Password baru minimal 8 karakter.']});
+                    } else if (newPassword.length < 6) {
+                        showValidationErrors({new_password: ['Password baru minimal 6 karakter.']});
                         updatePasswordSuccess = false;
                     } else if (currentPassword.length === 0) {
                         showValidationErrors({current_password: ['Password saat ini harus diisi untuk mengubah password.']});
@@ -419,8 +426,9 @@
         if (uploadAvatarBtn) {
             uploadAvatarBtn.addEventListener('click', function() {
                 avatarModal.show();
-                avatarUrlInput.value = editProfileAvatarImg.src;
+                avatarUrlInput.value = editProfileAvatarImg.src === defaultAvatarPath ? '' : editProfileAvatarImg.src; // Kosongkan jika default
                 clearValidationErrors();
+                showAlert('', '');
             });
         }
 
@@ -470,6 +478,54 @@
                     console.error('Error updating avatar:', error);
                     showAlert('Terjadi kesalahan jaringan atau server saat memperbarui foto profil.', 'danger');
                 } finally {
+                    document.getElementById('saveAvatarBtn').disabled = false;
+                }
+            });
+        }
+
+        // Logic untuk tombol Remove Avatar
+        if (removeAvatarBtn) {
+            removeAvatarBtn.addEventListener('click', async function() {
+                if (!confirm('Apakah Anda yakin ingin mengatur foto profil ke default?')) {
+                    return;
+                }
+
+                clearValidationErrors();
+                showAlert('', '');
+                removeAvatarBtn.disabled = true;
+                document.getElementById('saveAvatarBtn').disabled = true;
+                showAlert('Mengatur foto profil ke default...', 'info');
+
+                try {
+                    const response = await fetch('{{ route('profile.removeAvatar') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({})
+                    });
+
+                    const data = await response.json();
+                    showAlert('', ''); // Clear info message
+
+                    if (response.ok && data.success) {
+                        showAlert(data.message, 'success');
+                        // Update gambar avatar di tampilan
+                        viewProfileAvatarImg.src = defaultAvatarPath;
+                        editProfileAvatarImg.src = defaultAvatarPath;
+                        navbarUserAvatarImg.src = defaultAvatarPath;
+                        avatarUrlInput.value = '';
+                        avatarModal.hide();
+                    } else {
+                        showAlert(data.message || 'Gagal mengatur foto profil ke default.', 'danger');
+                    }
+                } catch (error) {
+                    console.error('Error removing avatar:', error);
+                    showAlert('Terjadi kesalahan jaringan atau server saat mengatur foto profil ke default.', 'danger');
+                } finally {
+                    removeAvatarBtn.disabled = false;
                     document.getElementById('saveAvatarBtn').disabled = false;
                 }
             });
