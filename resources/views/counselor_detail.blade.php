@@ -3,29 +3,7 @@
 @section('title', 'Detail Konselor - GasKonsul')
 
 @section('content')
-<div class="container-fluid bg-light py-4" style="min-height: 100vh;">
-    {{-- Navbar di Bagian Atas --}}
-    <div class="d-flex justify-content-between align-items-center py-3 px-4 bg-white shadow-sm mb-4">
-        <div class="d-flex align-items-center">
-            <a href="{{ route('home') }}" class="btn btn-link text-primary me-2"><i class="bi bi-arrow-left"></i> Kembali</a>
-            <img src="{{ asset('images/gasKonsul_logo.png') }}" alt="Logo" width="40" class="me-2">
-            <h4 class="text-primary fw-bold m-0">{{ $counselorData['name'] ?? 'Konselor' }}</h4>
-        </div>
-        <div class="d-flex align-items-center">
-            {{-- Navigasi Lain --}}
-            <a href="{{ route('home') }}" class="me-3 text-decoration-none text-dark">Beranda</a>
-            <a href="{{ route('profile') }}" class="me-3 text-decoration-none text-dark">Profil</a>
-            <a href="{{ route('history') }}" class="me-3 text-decoration-none text-dark">Riwayat</a>
-            <a href="{{ route('chat') }}" class="me-3 text-decoration-none text-dark">Chat</a>
-            {{-- Info User --}}
-            <div class="d-flex align-items-center bg-white border rounded-pill px-3 py-1">
-                {{-- Menggunakan gambar default jika avatar user tidak tersedia --}}
-                <img src="{{ Session::get('userAvatar') ?? asset('images/default_profile.png') }}" alt="User" class="rounded-circle" width="32" height="32" style="object-fit: cover;">
-                <span class="ms-2">{{ Session::get('userName') ?? 'User' }}</span> {{-- Asumsi userName ada di session --}}
-            </div>
-        </div>
-    </div>
-
+<div class="container-fluid py-4" style="min-height: 100vh; background-color: #e0f0ff;">
     {{-- Notifikasi Error/Sukses --}}
     <div class="container mt-3">
         @if(isset($errorMessage) && $errorMessage)
@@ -33,7 +11,6 @@
                 {{ $errorMessage }}
             </div>
         @endif
-        {{-- Pesan flash dari controller atau redirect --}}
         @if(session('error'))
             <div class="alert alert-danger text-center">
                 {{ session('error') }}
@@ -49,80 +26,74 @@
     </div>
 
     {{-- Konten Utama Detail Konselor --}}
-    <div class="container bg-white rounded-4 p-4 shadow-sm" style="max-width: 700px;">
+    <div class="container bg-white rounded-4 p-4 shadow-sm" style="max-width: 900px;">
         @if(empty($counselorData) && !empty($errorMessage))
             <p class="text-center text-danger">{{ $errorMessage }}</p>
         @elseif(empty($counselorData))
-            {{-- Tampilkan pesan loading jika data belum ada dan tidak ada error --}}
             <p class="text-center text-muted">Memuat data konselor...</p>
         @else
-            {{-- Tampilan Profil Konselor --}}
             <div id="counselorProfileView" style="display: block;">
-                <div class="text-center mb-4 pb-4 bg-primary text-white rounded-bottom-4" style="margin-top: -30px; border-top-left-radius: 45px !important; border-top-right-radius: 45px !important; border-bottom-left-radius: 45px !important; border-bottom-right-radius: 45px !important;">
-                    <img src="{{ $counselorData['avatar'] ?? asset('images/default_profile.png') }}" alt="Avatar" class="rounded-circle border border-white border-3 mb-3" style="width: 120px; height: 120px; object-fit: cover; margin-top: 30px;">
-                    <h4 class="fw-bold">{{ $counselorData['name'] ?? 'Nama Konselor' }}</h4>
-                    <p class="mb-0">{{ $counselorData['bidang'] ?? 'Bidang Konseling' }}</p>
+                <div class="mb-4">
+                    <a href="{{ route('home') }}" class="btn btn-link text-primary"><i class="bi bi-arrow-left"></i> Kembali</a>
+                    <h4 class="text-primary fw-bold mt-2">Profil Konselor</h4>
                 </div>
-
-                <div class="px-4 pt-4">
-                    {{-- Bagian Rating --}}
-                    <h5 class="text-primary fw-bold">Rating</h5>
-                    <div class="d-flex mb-3">
-                        @for($i = 1; $i <= 5; $i++)
-                            <i class="bi bi-star-fill" style="color: {{ $i <= round($counselorData['rate']) ? '#2897FF' : '#E0E0E0' }}; font-size: 1.8rem;"></i>
-                        @endfor
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <img src="{{ $counselorData['avatar'] ?? asset('images/default_profile.png') }}" alt="Avatar" class="rounded-circle border border-primary border-3 mb-3" style="width: 180px; height: 180px; object-fit: cover;">
+                        <h5 class="fw-bold text-primary">{{ $counselorData['name'] ?? 'Nama Konselor' }}</h5>
+                        <p class="text-muted">{{ $counselorData['bidang'] ?? 'Bidang Konseling' }}</p>
                     </div>
-                    <hr class="my-3">
-
-                    {{-- Bagian Tentang --}}
-                    <h5 class="text-primary fw-bold">Tentang</h5>
-                    <p>{{ $counselorData['about'] ?? 'Tidak ada deskripsi tersedia.' }}</p>
-                    <hr class="my-3">
-
-                    {{-- Bagian Jadwal --}}
-                    <h5 class="text-primary fw-bold">Jadwal</h5>
-                    <div class="d-flex flex-wrap justify-content-center mb-4" id="scheduleButtons">
-                        @forelse($schedules as $schedule)
-                            <div class="schedule-box p-3 m-2 text-center rounded-3 shadow-sm {{ $schedule['isBooked'] ? 'bg-secondary text-white' : 'bg-primary text-white' }}"
-                                 data-schedule-id="{{ $schedule['id'] }}"
-                                 data-is-booked="{{ $schedule['isBooked'] ? 'true' : 'false' }}"
-                                 style="width: 120px; cursor: {{ $schedule['isBooked'] ? 'not-allowed' : 'pointer' }};">
-                                <strong class="d-block">{{ $schedule['day'] }}</strong>
-                                <span>{{ $schedule['time'] }}</span>
+                    <div class="col-md-8">
+                        <div class="mb-3">
+                            <h6 class="text-primary fw-bold">Rating</h6>
+                            <div class="d-flex align-items-center">
+                                @for($i = 1; $i <= 5; $i++)
+                                    <i class="bi bi-star-fill" style="color: {{ $i <= round($counselorData['rate']) ? '#2897FF' : '#E0E0E0' }}; font-size: 1.2rem; margin-right: 2px;"></i>
+                                @endfor
+                                <span class="ms-2 text-muted">({{ number_format($counselorData['rate'] ?? 0, 1) }})</span>
                             </div>
-                        @empty
-                            <p class="text-muted">Tidak ada jadwal tersedia.</p>
-                        @endforelse
-                    </div>
-
-                    <div class="text-center mt-4">
-                        <button id="bookScheduleBtn" class="btn btn-primary btn-lg rounded-pill px-5" disabled>Booking</button>
-                        <p class="text-danger mt-2" id="bookingError" style="display: none;"></p>
-                    </div>
-
-                    <div class="text-center mt-3">
-                        <button id="showRatingPageBtn" class="btn btn-outline-primary btn-lg rounded-pill px-5">Beri Rating</button>
+                        </div>
+                        <div class="mb-3">
+                            <h6 class="text-primary fw-bold">Tentang</h6>
+                            <p class="text-secondary">{{ $counselorData['about'] ?? 'Tidak ada deskripsi tersedia.' }}</p>
+                        </div>
+                        <div class="mb-3">
+                            <h6 class="text-primary fw-bold">Jadwal Tersedia</h6>
+                            <div class="d-flex flex-wrap gap-2" id="scheduleButtons">
+                                @forelse($schedules as $schedule)
+                                    <button
+                                        class="btn btn-sm {{ $schedule['isBooked'] ? 'btn-secondary disabled' : 'btn-outline-primary' }} rounded-pill"
+                                        data-schedule-id="{{ $schedule['id'] }}"
+                                        data-is-booked="{{ $schedule['isBooked'] ? 'true' : 'false' }}"
+                                        style="padding: 0.5rem 1rem;">
+                                        {{ $schedule['day'] }}, {{ $schedule['time'] }}
+                                    </button>
+                                @empty
+                                    <p class="text-muted">Tidak ada jadwal tersedia.</p>
+                                @endforelse
+                            </div>
+                            <p class="text-danger mt-2" id="bookingError" style="display: none;"></p>
+                            <button id="bookScheduleBtn" class="btn btn-primary rounded-pill px-4 mt-2" disabled>Booking</button>
+                        </div>
+                        <div class="text-end">
+                            <button id="showRatingPageBtn" class="btn btn-outline-primary rounded-pill px-4">Beri Rating</button>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {{-- Tampilan Halaman Rating --}}
-            <div id="ratingView" style="display: none;">
-                <div class="text-center mb-4 pb-4 bg-primary text-white rounded-bottom-4" style="margin-top: -30px; border-top-left-radius: 45px !important; border-top-right-radius: 45px !important; border-bottom-left-radius: 45px !important; border-bottom-right-radius: 45px !important;">
-                    <img src="{{ $counselorData['avatar'] ?? asset('images/default_profile.png') }}" alt="Avatar" class="rounded-circle border border-white border-3 mb-3" style="width: 120px; height: 120px; object-fit: cover; margin-top: 30px;">
-                    <h4 class="fw-bold">{{ $counselorData['name'] ?? 'Konselor' }}</h4>
-                </div>
-
-                <div class="px-4 pt-4 text-center">
-                    <h5 class="mb-4 text-dark">Silakan beri rating kepada konselor</h5>
-                    <div id="starRating" class="mb-5">
+            <div id="ratingView" style="display: none;" class="mt-4">
+                <div class="text-center mb-4">
+                    <h5 class="mb-4 text-dark">Berikan Rating untuk {{ $counselorData['name'] ?? 'Konselor' }}</h5>
+                    <div id="starRating" class="mb-3">
                         @for($i = 1; $i <= 5; $i++)
-                            <i class="bi bi-star" data-rating="{{ $i }}" style="font-size: 3rem; cursor: pointer; color: #E0E0E0;"></i>
+                            <i class="bi bi-star" data-rating="{{ $i }}" style="font-size: 2rem; cursor: pointer; color: #E0E0E0;"></i>
                         @endfor
                     </div>
-                    <button id="saveRatingBtn" class="btn btn-primary btn-lg rounded-pill px-5">Simpan Rating</button>
+                    <button id="saveRatingBtn" class="btn btn-primary rounded-pill px-4">Simpan Rating</button>
                     <p class="text-danger mt-2" id="ratingError" style="display: none;"></p>
-                    <button id="cancelRatingBtn" class="btn btn-outline-secondary btn-lg rounded-pill px-5 mt-3">Batal</button>
+                    <button id="cancelRatingBtn" class="btn btn-outline-secondary rounded-pill px-4 mt-2">Batal</button>
                 </div>
             </div>
         @endif
@@ -131,36 +102,31 @@
 @endsection
 
 @section('scripts')
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // --- Elemen UI ---
         const counselorProfileView = document.getElementById('counselorProfileView');
         const ratingView = document.getElementById('ratingView');
         const showRatingPageBtn = document.getElementById('showRatingPageBtn');
         const cancelRatingBtn = document.getElementById('cancelRatingBtn');
         const bookScheduleBtn = document.getElementById('bookScheduleBtn');
-        const scheduleBoxes = document.querySelectorAll('.schedule-box');
+        const scheduleButtons = document.querySelectorAll('#scheduleButtons button');
         const bookingError = document.getElementById('bookingError');
         const starRating = document.getElementById('starRating');
         const saveRatingBtn = document.getElementById('saveRatingBtn');
         const ratingError = document.getElementById('ratingError');
         const counselorDetailAjaxAlert = document.getElementById('counselorDetailAjaxAlert');
 
-        let selectedScheduleId = ''; // State untuk jadwal yang dipilih
-        let currentRating = 0; // State untuk rating yang dipilih
+        let selectedScheduleId = '';
+        let currentRating = 0;
+        const counselorUid = "{{ $counselorUid }}";
 
-        const counselorUid = "{{ $counselorUid }}"; // Ambil UID konselor dari PHP
-
-        // --- Fungsi Helper ---
         function showAlert(message, type) {
             counselorDetailAjaxAlert.textContent = message;
             counselorDetailAjaxAlert.className = `alert mt-3 text-center alert-${type}`;
             counselorDetailAjaxAlert.style.display = 'block';
             setTimeout(() => {
                 counselorDetailAjaxAlert.style.display = 'none';
-            }, 5000); // Sembunyikan setelah 5 detik
+            }, 5000);
         }
 
         function clearErrors(elementId) {
@@ -169,38 +135,40 @@
         }
 
         function updateScheduleSelection(selectedId) {
-            scheduleBoxes.forEach(box => {
-                box.classList.remove('active-schedule'); // Hapus class active dari semua
-                if (box.dataset.scheduleId === selectedId) {
-                    box.classList.add('active-schedule'); // Tambahkan class active ke yang dipilih
+            scheduleButtons.forEach(button => {
+                // Pastikan hanya tombol yang TIDAK dibooking yang bisa di-select
+                if (button.dataset.isBooked === 'false') {
+                    if (button.dataset.scheduleId === selectedId) {
+                        button.classList.remove('btn-outline-primary');
+                        button.classList.add('btn-primary');
+                    } else {
+                        button.classList.remove('btn-primary');
+                        button.classList.add('btn-outline-primary');
+                    }
                 }
             });
-            bookScheduleBtn.disabled = !selectedId; // Aktifkan/nonaktifkan tombol booking
-            selectedScheduleId = selectedId; // Update state JS
-            clearErrors('bookingError'); // Bersihkan error booking
+            bookScheduleBtn.disabled = !selectedId;
+            selectedScheduleId = selectedId;
+            clearErrors('bookingError');
         }
 
         function updateStarRating(rating) {
             currentRating = rating;
-            starRating.querySelectorAll('.bi-star, .bi-star-fill').forEach(star => {
-                const starValue = parseInt(star.dataset.rating);
-                if (starValue <= currentRating) {
+            starRating.querySelectorAll('.bi-star, .bi-star-fill').forEach((star, index) => {
+                if (index < rating) {
                     star.classList.remove('bi-star');
                     star.classList.add('bi-star-fill');
-                    star.style.color = '#2897FF'; // Warna bintang aktif
+                    star.style.color = '#2897FF';
                 } else {
                     star.classList.remove('bi-star-fill');
                     star.classList.add('bi-star');
-                    star.style.color = '#E0E0E0'; // Warna bintang tidak aktif
+                    star.style.color = '#E0E0E0';
                 }
             });
-            clearErrors('ratingError'); // Bersihkan error rating
+            clearErrors('ratingError');
         }
 
-
-        // --- Event Listeners ---
-
-        // Toggle tampilan profil / rating
+        // Event Listeners
         showRatingPageBtn.addEventListener('click', function() {
             counselorProfileView.style.display = 'none';
             ratingView.style.display = 'block';
@@ -213,21 +181,21 @@
             updateStarRating(0); // Reset rating saat keluar dari halaman rating
         });
 
-        // Pilih jadwal
-        scheduleBoxes.forEach(box => {
-            const isBooked = box.dataset.isBooked === 'true';
+        scheduleButtons.forEach(button => {
+            const isBooked = button.dataset.isBooked === 'true';
             if (!isBooked) { // Hanya yang belum dibooking yang bisa diklik
-                box.addEventListener('click', function() {
-                    const scheduleId = this.dataset.scheduleId;
-                    updateScheduleSelection(scheduleId);
+                button.addEventListener('click', function() {
+                    updateScheduleSelection(this.dataset.scheduleId);
                 });
             } else {
-                box.classList.remove('bg-primary'); // Hapus warna primer untuk yang dibooking
-                box.classList.add('bg-secondary'); // Beri warna sekunder untuk yang dibooking
+                // Tidak perlu mengubah kelas di sini karena sudah diatur di blade (btn-secondary disabled)
+                // Jika ingin memastikan, bisa tambahkan:
+                // button.classList.remove('btn-outline-primary', 'btn-primary');
+                // button.classList.add('btn-secondary', 'disabled');
             }
         });
 
-        // Booking jadwal
+
         bookScheduleBtn.addEventListener('click', async function() {
             if (!selectedScheduleId) {
                 bookingError.textContent = 'Silakan pilih jadwal terlebih dahulu.';
@@ -236,7 +204,7 @@
             }
 
             showAlert('Memproses booking...', 'info');
-            bookScheduleBtn.disabled = true; // Nonaktifkan tombol saat memproses
+            bookScheduleBtn.disabled = true;
             bookingError.style.display = 'none';
 
             try {
@@ -269,11 +237,10 @@
                 showAlert('Terjadi kesalahan jaringan atau server.', 'danger');
                 console.error('Error booking schedule:', error);
             } finally {
-                bookScheduleBtn.disabled = false; // Aktifkan kembali tombol
+                bookScheduleBtn.disabled = false;
             }
         });
 
-        // Rating
         starRating.addEventListener('click', function(e) {
             const clickedStar = e.target.closest('.bi-star, .bi-star-fill');
             if (clickedStar) {
@@ -290,7 +257,7 @@
             }
 
             showAlert('Menyimpan rating...', 'info');
-            saveRatingBtn.disabled = true; // Nonaktifkan tombol saat memproses
+            saveRatingBtn.disabled = true;
             ratingError.style.display = 'none';
 
             try {
@@ -313,7 +280,6 @@
                     // Kembali ke tampilan profil konselor setelah menyimpan rating
                     ratingView.style.display = 'none';
                     counselorProfileView.style.display = 'block';
-                    // Opsional: Reload data konselor untuk memperbarui rating di UI
                     location.reload();
                 } else {
                     ratingError.textContent = data.message || 'Gagal menyimpan rating.';
@@ -326,24 +292,18 @@
                 showAlert('Terjadi kesalahan jaringan atau server.', 'danger');
                 console.error('Error saving rating:', error);
             } finally {
-                saveRatingBtn.disabled = false; // Aktifkan kembali tombol
+                saveRatingBtn.disabled = false;
             }
         });
 
         // Inisialisasi tampilan awal
-        // Jika counselorData kosong, tampilan 'Memuat data konselor...' akan aktif
-        // Default tampilan adalah profil konselor
-        if (counselorProfileView) { // Pastikan elemen ada sebelum diakses
+        if (counselorProfileView) {
             counselorProfileView.style.display = 'block';
         }
-        if (ratingView) { // Pastikan elemen ada sebelum diakses
+        if (ratingView) {
             ratingView.style.display = 'none';
         }
-
-
-        // Set initial schedule selection status (jika ada jadwal yang dipilih dari state)
-        // Ini akan nonaktifkan tombol booking jika tidak ada jadwal terpilih awal
-        updateScheduleSelection(selectedScheduleId);
+        updateScheduleSelection(selectedScheduleId); // Memastikan tombol booking dinonaktifkan di awal jika tidak ada jadwal terpilih
     });
 </script>
 @endsection

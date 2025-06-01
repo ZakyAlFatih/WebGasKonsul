@@ -24,19 +24,18 @@ class HistoryController extends Controller
      */
     public function showHistory()
     {
-        $userId = Session::get('uid'); // Mengambil UID pengguna dari session
+        $userId = Session::get('uid');
         $bookingHistory = [];
         $errorMessage = null;
 
         if (!$userId) {
-            // Jika pengguna tidak login, redirect atau tampilkan pesan error
             return redirect()->route('login')->with('error', 'Anda harus login untuk melihat riwayat.');
         }
 
         try {
             Log::info("Mulai mengambil riwayat booking untuk userId: $userId");
 
-            // 1. Ambil riwayat dari koleksi 'history' berdasarkan userId
+            // Ambil riwayat dari koleksi 'history' berdasarkan userId
             $historySnapshot = $this->firestore->database()->collection('history')
                 ->where('userId', '=', $userId)
                 ->documents();
@@ -50,13 +49,13 @@ class HistoryController extends Controller
                     $data = $doc->data();
                     $rawHistoryData[] = $data;
                     if (isset($data['counselorId']) && !empty($data['counselorId'])) {
-                        $counselorUids[$data['counselorId']] = true; // Gunakan array asosiatif untuk menghindari duplikasi
+                        $counselorUids[$data['counselorId']] = true;
                     }
                 }
             }
 
             $counselorDataMap = [];
-            // 2. Ambil data detail konselor secara batch jika ada UID konselor
+            // Ambil data detail konselor secara batch jika ada UID konselor
             if (!empty($counselorUids)) {
                 $counselorRefs = array_map(function($uid) {
                     return $this->firestore->database()->collection('counselors')->document($uid);
@@ -71,7 +70,7 @@ class HistoryController extends Controller
                 }
             }
 
-            // 3. Gabungkan data riwayat dengan data konselor
+            // Gabungkan data riwayat dengan data konselor
             foreach ($rawHistoryData as $historyData) {
                 $counselorId = $historyData['counselorId'] ?? null;
                 $counselorData = $counselorDataMap[$counselorId] ?? null;
@@ -80,8 +79,11 @@ class HistoryController extends Controller
                 $time = 'Tidak tersedia';
 
                 // Logika untuk menentukan day dan time dari data konselor
-                if (isset($historyData['scheduleId'])) {
-                    $bookedScheduleId = $historyData['scheduleId']; // Ini adalah scheduleId yang dibooking
+                if (isset($historyData['day']) && isset($historyData['time'])) {
+                    $day = $historyData['day'];
+                    $time = $historyData['time'];
+                } else if (isset($historyData['scheduleId'])) {
+                    $bookedScheduleId = $historyData['scheduleId'];
 
                     if ($bookedScheduleId == ($counselorData['scheduleId1'] ?? null)) {
                         $day = $counselorData['availability_day1'] ?? 'Tidak tersedia';
@@ -94,26 +96,28 @@ class HistoryController extends Controller
                         $time = $counselorData['availability_time3'] ?? 'Tidak tersedia';
                     }
                 }
-                $day = $historyData['day'] ?? $day;
-                $time = $historyData['time'] ?? $time;
-
 
                 $bookingHistory[] = [
                     'userId' => $historyData['userId'] ?? '',
                     'counselorId' => $historyData['counselorId'] ?? '',
                     'counselorName' => $counselorData['name'] ?? 'Tidak diketahui',
                     'counselorBidang' => $counselorData['bidang'] ?? 'Tidak diketahui',
-                    'scheduleId' => $historyData['scheduleId'] ?? '', // Menggunakan 'scheduleId' dari historyData
+                    'scheduleId' => $historyData['scheduleId'] ?? '',
                     'day' => $day,
                     'time' => $time,
-                    'status' => $historyData['status'] ?? 'completed', // Ambil status dari historyData, default 'completed'
+                    'status' => $historyData['status'] ?? 'completed',
                     'createdAt' => $historyData['createdAt'] ?? 'Tidak tersedia',
+                    'counselorAvatar' => $counselorData['avatar'] ?? asset('images/default_profile.png'),
                 ];
             }
 
-            // Sort history by creation date (most recent first)
+            // Sort history by creation date
             usort($bookingHistory, function($a, $b) {
-                return strtotime($b['createdAt']) - strtotime($a['createdAt']);
+                // Konversi ke DateTimeImmutable
+                $dateA = (isset($a['createdAt']) && $a['createdAt'] !== 'Tidak tersedia') ? new \DateTimeImmutable($a['createdAt']) : new \DateTimeImmutable('1970-01-01');
+                $dateB = (isset($b['createdAt']) && $b['createdAt'] !== 'Tidak tersedia') ? new \DateTimeImmutable($b['createdAt']) : new \DateTimeImmutable('1970-01-01');
+
+                return $dateB <=> $dateA;
             });
 
 

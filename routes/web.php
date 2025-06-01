@@ -8,24 +8,15 @@ use Illuminate\Support\Facades\Auth;   // Ditambahkan untuk cek login di rute ak
 // Controller untuk Otentikasi & Halaman Umum
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegisterController;
-use App\Http\Controllers\HomeController; // Untuk beranda pengguna biasa
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\CounselorController;
+use App\Http\Controllers\ChatController; // Untuk chat
+use App\Http\Controllers\ProfileController; // Untuk profil
+use App\Http\Controllers\HistoryController; // Untuk riwayat
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Session;
 
-// Controller spesifik untuk Dashboard Konselor
-use App\Http\Controllers\ChatCounselorController;    // Pastikan path ini benar
-use App\Http\Controllers\ProfileCounselorController; // Pastikan path ini benar
-
-// Middleware Kustom Konselor
-use App\Http\Middleware\EnsureUserIsCounselor; // Pastikan path ini benar
-
-// Controller lain untuk fungsionalitas pengguna biasa (sesuaikan jika perlu)
-use App\Http\Controllers\CounselorController; // Untuk menampilkan detail konselor ke user biasa
-use App\Http\Controllers\ChatController;      // Untuk chat pengguna biasa
-use App\Http\Controllers\ProfileController;  // Untuk profil pengguna biasa
-use App\Http\Controllers\HistoryController;  // Untuk riwayat pengguna biasa
-
-// ======================================================================
-// --- RUTE HALAMAN UTAMA / LANDING PAGE ---
-// ======================================================================
+// Route untuk halaman utama yang mengarahkan ke login
 Route::get('/', function () {
     // Logika untuk mengarahkan pengguna yang sudah login
     // Berdasarkan sesi kustom yang Anda set di LoginController
@@ -48,12 +39,15 @@ Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout'); // Menggunakan POST untuk logout
 
-Route::get('/register/counselor', [RegisterController::class, 'showCounselorRegisterForm'])->name('register.counselor');
+
+// Route POST untuk memproses pendaftaran Counselor
 Route::post('/register/counselor', [RegisterController::class, 'storeCounselor'])->name('register.counselor.store');
-Route::get('/register/user', [RegisterController::class, 'showUserRegisterForm'])->name('register.user');
+
+// Route POST untuk memproses pendaftaran User
 Route::post('/register/user', [RegisterController::class, 'storeUser'])->name('register.user.store');
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-
+// --- Protected Routes (Perlu Login) ---
 // ======================================================================
 // --- RUTE UNTUK DASHBOARD KONSELOR ---
 // ======================================================================
@@ -89,9 +83,10 @@ Route::middleware(['auth_firebase'])->group(function () {
     // Profil untuk Pengguna Biasa
     // Pastikan nama rute 'profile' ini tidak bentrok dengan 'counselor.profile.show' jika diakses tanpa prefix grup
     // Karena ini di luar grup 'counselor.', maka namanya hanya 'profile'
-    Route::get('/profile', [ProfileController::class, 'showProfile'])->name('profile');
-    Route::post('/profile/update-data', [ProfileController::class, 'updateProfileData'])->name('profile.updateData');
-    Route::post('/profile/update-password', [ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
+    Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'showProfile'])->name('profile');
+    Route::post('/profile/update-data', [App\Http\Controllers\ProfileController::class, 'updateProfileData'])->name('profile.updateData');
+    Route::post('/profile/update-password', [App\Http\Controllers\ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
+    Route::post('/profile/update-avatar', [App\Http\Controllers\ProfileController::class, 'updateAvatar'])->name('profile.updateAvatar');
 
     // Detail Konselor (dilihat oleh Pengguna Biasa)
     Route::get('/counselor/{uid}', [CounselorController::class, 'showCounselorDetail'])->name('counselor.detail');

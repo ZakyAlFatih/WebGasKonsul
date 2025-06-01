@@ -7,10 +7,9 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use Kreait\Firebase\Firestore;
-// use Kreait\Firebase\Factory; // Tidak diperlukan jika app('firebase.auth') sudah ada
-// use Kreait\Firebase\ServiceAccount; // Tidak diperlukan jika app('firebase.auth') sudah ada
-// use Kreait\Firebase\Database; // Tidak diperlukan jika app('firebase.auth') sudah ada
-// use Illuminate\Support\Facades\Validator; // Tidak diperlukan di sini
+use Kreait\Firebase\Exception\AuthException;
+use Kreait\Firebase\Exception\FirebaseException;
+use Kreait\Firebase\Auth\SignIn\FailedToSignIn as FirebaseFailedToSignIn;
 
 class LoginController extends Controller
 {
@@ -19,8 +18,10 @@ class LoginController extends Controller
 
     public function __construct()
     {
-        $this->auth = app('firebase.auth');
+        Log::info('LoginController: __construct called.');
         $this->firestore = app('firebase.firestore');
+        $this->auth = app('firebase.auth');
+        Log::info('LoginController: Firebase instances resolved in constructor.');
     }
 
     /**
@@ -35,24 +36,28 @@ class LoginController extends Controller
 
     public function login(Request $request)
     {
+        Log::info('LoginController: login method started.');
         $idTokenString = $request->input('idToken');
 
         if (!$idTokenString) {
+            Log::warning('LoginController: ID Token not provided.');
             return response()->json(['error' => 'ID Token diperlukan'], 400);
         }
 
         try {
             // Verifikasi ID Token Firebase
+            Log::info('LoginController: Attempting to verify ID Token.');
             $verifiedIdToken = $this->auth->verifyIdToken($idTokenString);
             $uid = $verifiedIdToken->claims()->get('sub');
-            $userName = $verifiedIdToken->claims()->get('name'); // Ambil nama dari ID Token claims
-            $userAvatar = $verifiedIdToken->claims()->get('picture'); // Ambil avatar dari ID Token claims
 
-            // Jika nama tidak ada di claims, coba ambil dari Firestore
+            Log::info('LoginController: ID Token verified. UID: ' . $uid);
+            $userName = $verifiedIdToken->claims()->get('name');
+            $userAvatar = $verifiedIdToken->claims()->get('picture');
+
+            // Jika nama tidak ada di claims, maka ambil dari Firestore
             if (empty($userName)) {
-                // Ambil data user dari Firestore berdasarkan UID
                 $userDoc = $this->firestore->database()
-                    ->collection('users') // Asumsi ada koleksi 'users' untuk user biasa
+                    ->collection('users')
                     ->document($uid)
                     ->snapshot();
 
@@ -62,18 +67,19 @@ class LoginController extends Controller
                 }
             }
 
-            // Ambil data counselor dari Firestore berdasarkan UID (untuk cek role dan nama/avatar jika user adalah counselor)
+            // Ambil data counselor dari Firestore berdasarkan UID
+            Log::info('LoginController: Attempting to get counselor document snapshot for UID: ' . $uid);
             $counselorDoc = $this->firestore->database()
                 ->collection('counselors')
                 ->document($uid)
                 ->snapshot();
+            Log::info('LoginController: Counselor document snapshot obtained. Exists: ' . ($counselorDoc->exists() ? 'true' : 'false'));
 
             $isCounselor = $counselorDoc->exists();
 
             if ($isCounselor) {
-                // Jika konselor, gunakan nama dan avatar dari data konselor Firestore
-                $userName = $counselorDoc->data()['name'] ?? $userName; // Prioritaskan nama dari counselorDoc
-                $userAvatar = $counselorDoc->data()['avatar'] ?? $userAvatar; // Prioritaskan avatar dari counselorDoc
+                $userName = $counselorDoc->data()['name'] ?? $userName;
+                $userAvatar = $counselorDoc->data()['avatar'] ?? $userAvatar;
             }
 
             // Default jika nama masih kosong
@@ -96,8 +102,21 @@ class LoginController extends Controller
                 return response()->json(['message' => 'Login user biasa berhasil', 'role' => 'user']);
             }
         } catch (\Throwable $e) {
-            Log::error('Login Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Token tidak valid atau error server: ' . $e->getMessage()], 401);
+            Log::error('Login Error caught in LoginController: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'idToken_provided' => !empty($idTokenString),
+                'uid_from_token' => isset($uid) ? $uid : 'N/A'
+            ]);
+
+            $errorMessage = $e->getMessage();
+            $userFriendlyError = 'Login gagal. Terjadi kesalahan pada server, mohon coba lagi.'; // Default generic message
+
+            // Cek jika error adalah stack overflow
+            if (str_contains($errorMessage, 'Maximum call stack size')) {
+                $userFriendlyError = 'Login gagal. Terjadi masalah internal, mohon coba kembali.';
+            }
+
+            return response()->json(['error' => $userFriendlyError], 401);
         }
     }
 
@@ -109,15 +128,11 @@ class LoginController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Opsional: Cabut token Firebase jika Anda menggunakan session token di backend
-            // $this->auth->revokeRefreshTokens(Session::get('uid'));
-
-            Session::forget('uid'); // Hapus UID dari sesi
-            Session::forget('isCounselor'); // Hapus role dari sesi
+            Session::forget('uid');
+            Session::forget('isCounselor');
             Session::forget('userName');
             Session::forget('userAvatar');
 
-            // Hapus sesi Laravel (penting untuk security)
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
