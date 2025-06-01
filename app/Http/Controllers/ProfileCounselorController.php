@@ -97,20 +97,22 @@ class ProfileCounselorController extends Controller
             'name' => 'required|string|max:255',
             'avatar' => 'nullable|url|max:1024',
             'about' => 'nullable|string|max:5000',
-            'phone' => ['nullable', 'string', 'regex:/^(\+62|0)8[1-9][0-9]{6,11}$/'],
+            'phone' => ['nullable', 'string', 'regex:/^(\+62|0)8[1-9][0-9]{6,11}$/'], // Tetap
+            
+            // Validasi untuk ketersediaan waktu
             'availability_day1' => 'nullable|string|max:50',
-            'availability_time1' => 'nullable|string|max:50',
+            'availability_time1' => ['nullable', 'string', 'regex:/^\d{2}\:\d{2} - \d{2}\:\d{2}$/'], // Format HH.MM - HH.MM
             'availability_day2' => 'nullable|string|max:50',
-            'availability_time2' => 'nullable|string|max:50',
+            'availability_time2' => ['nullable', 'string', 'regex:/^\d{2}\:\d{2} - \d{2}\:\d{2}$/'],
             'availability_day3' => 'nullable|string|max:50',
-            'availability_time3' => 'nullable|string|max:50',
+            'availability_time3' => ['nullable', 'string', 'regex:/^\d{2}\:\d{2} - \d{2}\:\d{2}$/'],
+            
             'password' => 'nullable|string|min:8|confirmed',
-            // Hidden fields for schedule IDs are not validated here, but processed
         ]);
 
         if ($validator->fails()) {
             Log::warning("Profile update validation failed for UID: $uid", $validator->errors()->toArray());
-            return redirect()->route('counselor.profile.edit')
+            return redirect()->route('counselor.profile.edit') // Kembali ke form edit
                         ->withErrors($validator)
                         ->withInput();
         }
@@ -120,15 +122,24 @@ class ProfileCounselorController extends Controller
 
         // 1. Siapkan data profil dasar
         $firestoreUpdates['name'] = $validatedData['name'];
-        if (isset($validatedData['avatar']) && !empty($validatedData['avatar'])) {
-            $firestoreUpdates['avatar'] = $validatedData['avatar'];
-        } else if ($request->filled('avatar') && empty($validatedData['avatar'])) {
-            // Jika user mengirim field avatar tapi kosong (misal menghapus URL), set jadi string kosong
-            $firestoreUpdates['avatar'] = '';
-        }
         $firestoreUpdates['about'] = $validatedData['about'] ?? '';
         $firestoreUpdates['phone'] = $validatedData['phone'] ?? '';
 
+        // --- PENANGANAN AVATAR ---
+        if ($request->has('avatar')) { // Cek apakah field avatar dikirim (bisa jadi string kosong)
+            $avatarUrl = $validatedData['avatar'] ?? null; // Ambil dari data yang sudah divalidasi (nullable|url)
+            if (is_null($avatarUrl) || trim($avatarUrl) === '') {
+                // Jika URL avatar adalah null atau string kosong setelah validasi,
+                // kita set sebagai null di Firestore (atau string kosong jika preferensi Anda).
+                // Menggunakan null lebih bersih untuk "tidak ada gambar".
+                $firestoreUpdates['avatar'] = null; 
+                Log::info("Avatar for UID: $uid will be set to null/removed.");
+            } else {
+                // Jika ada URL valid, gunakan itu.
+                $firestoreUpdates['avatar'] = $avatarUrl;
+                Log::info("Avatar for UID: $uid will be updated to: $avatarUrl");
+            }
+        }
         // 2. Proses Ketersediaan Jadwal (3 slot statis)
         for ($i = 1; $i <= 3; $i++) {
             $dayValue = $validatedData["availability_day{$i}"] ?? null;

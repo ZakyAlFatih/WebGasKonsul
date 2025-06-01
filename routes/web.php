@@ -8,13 +8,20 @@ use Illuminate\Support\Facades\Auth;   // Ditambahkan untuk cek login di rute ak
 // Controller untuk Otentikasi & Halaman Umum
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\RegisterController;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\CounselorController;
-use App\Http\Controllers\ChatController; // Untuk chat
-use App\Http\Controllers\ProfileController; // Untuk profil
-use App\Http\Controllers\HistoryController; // Untuk riwayat
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Session;
+use App\Http\Controllers\HomeController; // Untuk beranda pengguna biasa
+
+// Controller spesifik untuk Dashboard Konselor
+use App\Http\Controllers\ChatCounselorController;    // Pastikan path ini benar
+use App\Http\Controllers\ProfileCounselorController; // Pastikan path ini benar
+
+// Middleware Kustom Konselor
+use App\Http\Middleware\EnsureUserIsCounselor; // Pastikan path ini benar
+
+// Controller lain untuk fungsionalitas pengguna biasa (sesuaikan jika perlu)
+use App\Http\Controllers\CounselorController; // Untuk menampilkan detail konselor ke user biasa
+use App\Http\Controllers\ChatController;      // Untuk chat pengguna biasa
+use App\Http\Controllers\ProfileController;  // Untuk profil pengguna biasa
+use App\Http\Controllers\HistoryController;  // Untuk riwayat pengguna biasa
 
 // Route untuk halaman utama yang mengarahkan ke login
 Route::get('/', function () {
@@ -62,6 +69,7 @@ Route::middleware([EnsureUserIsCounselor::class]) // Hanya middleware kustom And
         Route::get('/profile', [ProfileCounselorController::class, 'show'])->name('profile.show');     // Menampilkan profil
         Route::get('/profile/edit', [ProfileCounselorController::class, 'edit'])->name('profile.edit');   // Menampilkan form edit
         Route::post('/profile/update', [ProfileCounselorController::class, 'update'])->name('profile.update'); // Memproses update profil
+        
 
         // Rute untuk menampilkan percakapan spesifik dengan seorang user (berdasarkan bookingId)
         Route::get('/chat/with/{partnerUserId}/booking/{bookingId}', [ChatCounselorController::class, 'showSpecificChat'])->name('chat.show');
@@ -87,6 +95,7 @@ Route::middleware(['auth_firebase'])->group(function () {
     Route::post('/profile/update-data', [App\Http\Controllers\ProfileController::class, 'updateProfileData'])->name('profile.updateData');
     Route::post('/profile/update-password', [App\Http\Controllers\ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
     Route::post('/profile/update-avatar', [App\Http\Controllers\ProfileController::class, 'updateAvatar'])->name('profile.updateAvatar');
+    Route::post('/profile/remove-avatar', [ProfileController::class, 'removeAvatar'])->name('profile.removeAvatar');
 
     // Detail Konselor (dilihat oleh Pengguna Biasa)
     Route::get('/counselor/{uid}', [CounselorController::class, 'showCounselorDetail'])->name('counselor.detail');

@@ -130,14 +130,45 @@ class ChatCounselorController extends Controller
             if ($bookingDoc->exists() &&
                 ($bookingDoc->data()['counselorId'] ?? null) === $currentCounselorUid &&
                 ($bookingDoc->data()['userId'] ?? null) === $partnerUserId) {
-                $partnerName = $bookingDoc->data()['userName'] ?? $partnerName;
-                $partnerAvatar = $bookingDoc->data()['userAvatar'] ?? 'https://ui-avatars.com/api/?name=' . urlencode($partnerName) . '&background=random&color=fff';
+                
+                $bookingData = $bookingDoc->data(); // Ambil data booking
+                $partnerName = $bookingData['userName'] ?? $partnerName; // Ambil nama dari booking
+
+                // COBA AMBIL userAvatar DARI bookingData DULU (jika ada)
+                if (!empty($bookingData['userAvatar'])) {
+                    $partnerAvatar = $bookingData['userAvatar'];
+                    Log::info("Avatar for partner {$partnerUserId} found in bookingData for specific chat: {$partnerAvatar}");
+                } else {
+                    // JIKA TIDAK ADA DI bookingData, BARU AMBIL DARI USERS COLLECTION
+                    Log::info("userAvatar not in bookingData for partner {$partnerUserId}. Attempting to fetch from 'users' collection.");
+                    $userDoc = $this->firestoreDb->collection('users')->document($partnerUserId)->snapshot();
+                    if ($userDoc->exists()) {
+                        $userDataFromUsers = $userDoc->data();
+                        if (!empty($userDataFromUsers['avatar'])) { // Pastikan field 'avatar' ada dan tidak kosong
+                            $partnerAvatar = $userDataFromUsers['avatar'];
+                            Log::info("Avatar FOUND for partner {$partnerUserId} from users collection for specific chat: {$partnerAvatar}");
+                        } else {
+                            Log::info("Field 'avatar' is empty or not present for partner {$partnerUserId} in users collection. Using UI-Avatar with name: {$partnerName}");
+                            $partnerAvatar = 'https://ui-avatars.com/api/?name=' . urlencode($partnerName) . '&background=random&color=fff&rounded=true';
+                        }
+                    } else {
+                        Log::info("User document not found in 'users' collection for partner {$partnerUserId}. Using UI-Avatar with name: {$partnerName}");
+                        $partnerAvatar = 'https://ui-avatars.com/api/?name=' . urlencode($partnerName) . '&background=random&color=fff&rounded=true';
+                    }
+                }
             } else {
-                Log::warning("ChatCounselorController@showSpecificChat: Booking context not found/mismatched or missing required fields. Counselor: $currentCounselorUid, TargetUser: $partnerUserId, Booking: $bookingId. Fetching general messages.");
+                Log::warning("ChatCounselorController@showSpecificChat: Booking context not found/mismatched. Counselor: $currentCounselorUid, TargetUser: $partnerUserId, Booking: $bookingId. Attempting to fetch partner info directly from 'users'.");
+                // Jika booking tidak valid, tetap coba ambil info partner dari 'users' collection
                 $userDoc = $this->firestoreDb->collection('users')->document($partnerUserId)->snapshot();
                 if($userDoc->exists()){
                     $partnerName = $userDoc->data()['name'] ?? $partnerName;
-                    $partnerAvatar = $userDoc->data()['avatar'] ?? $partnerAvatar;
+                    if (!empty($userDoc->data()['avatar'])) {
+                        $partnerAvatar = $userDoc->data()['avatar'];
+                    } else {
+                        $partnerAvatar = 'https://ui-avatars.com/api/?name=' . urlencode($partnerName) . '&background=random&color=fff&rounded=true';
+                    }
+                } else {
+                    Log::warning("User doc also not found for partner {$partnerUserId} when booking context failed.");
                 }
             }
 
@@ -249,6 +280,7 @@ class ChatCounselorController extends Controller
 
         $validator = Validator::make($request->all(), [
             'message_content' => 'required|string|max:5000',
+            // 'bookingId' => 'required|string', // Tidak perlu validasi di sini jika sudah dari route parameter
         ]);
 
         if ($validator->fails()) {
@@ -259,8 +291,8 @@ class ChatCounselorController extends Controller
 
         try {
             $bookingDoc = $this->firestoreDb->collection('bookings')->document($bookingId)->snapshot();
-            if (!$bookingDoc->exists() || 
-                ($bookingDoc->data()['counselorId'] ?? null) !== $currentCounselorUid || 
+            if (!$bookingDoc->exists() ||
+                ($bookingDoc->data()['counselorId'] ?? null) !== $currentCounselorUid ||
                 ($bookingDoc->data()['userId'] ?? null) !== $partnerUserId) {
                 Log::warning("ChatCounselorController@sendMessage: Unauthorized attempt or invalid booking context. Counselor: $currentCounselorUid, TargetUser: $partnerUserId, Booking: $bookingId");
                 return response()->json(['success' => false, 'message' => 'Konteks sesi chat tidak valid untuk mengirim pesan.'], 403);
@@ -272,31 +304,23 @@ class ChatCounselorController extends Controller
                 'senderName' => $currentCounselorName,
                 'senderAvatar' => $currentCounselorAvatar,
                 'content' => $messageContent,
-                'timestamp' => FieldValue::serverTimestamp(), // Menggunakan server timestamp
+                'timestamp' => FieldValue::serverTimestamp(),
                 'isRead' => false,
-                // Tidak ada 'bookingId' di sini sesuai permintaan Anda untuk tidak menyimpannya di pesan
+                'bookingId' => $bookingId, // <--- TAMBAHKAN BARIS INI
+                'participants' => [$currentCounselorUid, $partnerUserId], // <--- TAMBAHKAN BARIS INI (opsional tapi disarankan)
             ];
-            
-            $newMessageRef = $this->firestoreDb->collection('chats')->newDocument();
-            $newMessageRef->set($newMessageData);
-            Log::info("ChatCounselorController@sendMessage: Message sent by Counselor: {$currentCounselorUid} to User: {$partnerUserId}.");
 
-            // Siapkan data untuk respons AJAX agar bisa langsung di-append ke UI
+            $newMessageRef = $this->firestoreDb->collection('chats')->add($newMessageData); // Gunakan add() jika ingin ID otomatis
+            // Jika sebelumnya menggunakan newDocument()->set(), sekarang langsung add()
+            // $newMessageRef->set($newMessageData);
+
+            Log::info("ChatCounselorController@sendMessage: Message sent by Counselor: {$currentCounselorUid} to User: {$partnerUserId}. Booking ID: {$bookingId}.");
+
+            // Siapkan data untuk respons AJAX
             $sentMessageForResponse = $newMessageData;
-            // FieldValue::serverTimestamp() tidak bisa langsung di-json_encode dengan benar untuk nilai timestamp.
-            // Untuk respons, kita bisa kirim perkiraan waktu klien atau biarkan JS yang handle.
-            // Di sini, kita akan kirim data apa adanya, dan JS akan menampilkan 'Baru saja' atau memformat jika bisa.
-            // Untuk tampilan langsung di JS, kita bisa tambahkan 'id' dan format timestamp jika perlu
             $sentMessageForResponse['id'] = $newMessageRef->id();
-            // Untuk timestamp, karena serverTimestamp() belum resolve jadi nilai konkret saat dikirim kembali,
-            // JS di appendMessage mungkin perlu menampilkan "Baru saja" dan mengandalkan listener real-time (jika ada)
-            // atau refresh untuk mendapatkan timestamp server yang sebenarnya.
-            // Atau kita bisa buat perkiraan seperti ini untuk tampilan instan:
             $now = Carbon::now(new \DateTimeZone('Asia/Jakarta'));
             $sentMessageForResponse['formattedTime'] = $now->format('H:i');
-            // Atau kirim sebagai objek yang bisa diproses JS:
-            // $sentMessageForResponse['timestamp_obj_for_js'] = ['seconds' => $now->getTimestamp(), 'nanos' => 0];
-
 
             return response()->json([
                 'success' => true,
