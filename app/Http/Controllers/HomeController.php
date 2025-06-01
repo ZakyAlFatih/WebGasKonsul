@@ -237,13 +237,13 @@ class HomeController extends Controller
     }
 
     // Metode placeholder untuk home page counselor (tidak aktif karena fokus user home)
-    public function showCounselorHome()
-    {
-        return view('home_counselor', [
-            'userName' => 'Counselor',
-            'counselorData' => [],
-            'pendingChats' => [],
-            'upcomingSchedules' => [],
-        ]);
-    }
+    // public function showCounselorHome()
+    // {
+    //     return view('home_counselor', [
+    //         'userName' => 'Counselor',
+    //         'counselorData' => [],
+    //         'pendingChats' => [],
+    //         'upcomingSchedules' => [],
+    //     ]);
+    // }
 }

@@ -1,24 +1,45 @@
 <?php
-use App\Http\Controllers\RegisterController;
+
+// --- USE STATEMENTS UTAMA ---
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Session; // Jika memang digunakan langsung di file rute
+use Illuminate\Support\Facades\Auth;   // Ditambahkan untuk cek login di rute akar
+
+// Controller untuk Otentikasi & Halaman Umum
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\CounselorController;
-use App\Http\Controllers\ChatController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\HistoryController;
+use App\Http\Controllers\ChatController; // Untuk chat
+use App\Http\Controllers\ProfileController; // Untuk profil
+use App\Http\Controllers\HistoryController; // Untuk riwayat
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
 
 // Route untuk halaman utama yang mengarahkan ke login
 Route::get('/', function () {
+    // Logika untuk mengarahkan pengguna yang sudah login
+    // Berdasarkan sesi kustom yang Anda set di LoginController
+    if (Session::has('uid')) {
+        if (Session::get('isCounselor')) {
+            return redirect()->route('counselor.dashboard'); // Arahkan konselor ke dashboard mereka
+        }
+        // Jika bukan konselor tapi memiliki UID (dianggap user biasa yang login)
+        return redirect()->route('home'); // Arahkan ke beranda pengguna biasa
+    }
+    // Jika tidak ada 'uid' di session, tampilkan halaman login
     return view('login');
-});
+})->name('landing');
 
-// --- Authentication Routes ---
+
+// ======================================================================
+// --- RUTE OTENTIKASI (LOGIN, REGISTER, LOGOUT) ---
+// ======================================================================
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout'); // Menggunakan POST untuk logout
 
-// --- Register POST Routes (Hanya POST karena form ada di modal) ---
+
 // Route POST untuk memproses pendaftaran Counselor
 Route::post('/register/counselor', [RegisterController::class, 'storeCounselor'])->name('register.counselor.store');
 
@@ -26,53 +47,69 @@ Route::post('/register/counselor', [RegisterController::class, 'storeCounselor']
 Route::post('/register/user', [RegisterController::class, 'storeUser'])->name('register.user.store');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-
 // --- Protected Routes (Perlu Login) ---
+// ======================================================================
+// --- RUTE UNTUK DASHBOARD KONSELOR ---
+// ======================================================================
+Route::middleware([EnsureUserIsCounselor::class]) // Hanya middleware kustom Anda
+     ->prefix('counselor')
+     ->name('counselor.')
+     ->group(function () {
+        Route::get('/', [ChatCounselorController::class, 'index'])->name('dashboard');
+        Route::get('/chat', [ChatCounselorController::class, 'index'])->name('chat');
+
+        // Rute untuk Profil Konselor yang sudah dipisah
+        Route::get('/profile', [ProfileCounselorController::class, 'show'])->name('profile.show');     // Menampilkan profil
+        Route::get('/profile/edit', [ProfileCounselorController::class, 'edit'])->name('profile.edit');   // Menampilkan form edit
+        Route::post('/profile/update', [ProfileCounselorController::class, 'update'])->name('profile.update'); // Memproses update profil
+
+        // Rute untuk menampilkan percakapan spesifik dengan seorang user (berdasarkan bookingId)
+        Route::get('/chat/with/{partnerUserId}/booking/{bookingId}', [ChatCounselorController::class, 'showSpecificChat'])->name('chat.show');
+
+        // Rute untuk mengirim pesan dalam percakapan spesifik (akan dipanggil via AJAX)
+        Route::post('/chat/with/{partnerUserId}/booking/{bookingId}/send', [ChatCounselorController::class, 'sendMessage'])->name('chat.send');
+     });
+
+
+// ======================================================================
+// --- RUTE TERPROTEKSI UNTUK PENGGUNA BIASA ---
+// ======================================================================
+// Pastikan middleware 'auth_firebase' Anda sesuai dan berfungsi untuk pengguna biasa
 Route::middleware(['auth_firebase'])->group(function () {
-    // Beranda User
-    Route::get('/home', [HomeController::class, 'showHome'])->name('home'); // Ini akan menentukan home_user atau home_counselor
+    Route::get('/home', [HomeController::class, 'showHome'])->name('home');
     Route::post('/home/recommend-counselor', [HomeController::class, 'recommendCounselorBidang'])->name('home.recommend');
     Route::get('/home/filter-counselors', [HomeController::class, 'filterCounselorsByBidang'])->name('home.filter');
 
-    // --- Profil Routes ---
+    // Profil untuk Pengguna Biasa
+    // Pastikan nama rute 'profile' ini tidak bentrok dengan 'counselor.profile.show' jika diakses tanpa prefix grup
+    // Karena ini di luar grup 'counselor.', maka namanya hanya 'profile'
     Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'showProfile'])->name('profile');
     Route::post('/profile/update-data', [App\Http\Controllers\ProfileController::class, 'updateProfileData'])->name('profile.updateData');
     Route::post('/profile/update-password', [App\Http\Controllers\ProfileController::class, 'updatePassword'])->name('profile.updatePassword');
     Route::post('/profile/update-avatar', [App\Http\Controllers\ProfileController::class, 'updateAvatar'])->name('profile.updateAvatar');
 
-    // --- Detail Konselor ---
-    // Route untuk menampilkan halaman detail konselor
+    // Detail Konselor (dilihat oleh Pengguna Biasa)
     Route::get('/counselor/{uid}', [CounselorController::class, 'showCounselorDetail'])->name('counselor.detail');
-    // Route POST untuk booking jadwal konselor
     Route::post('/counselor/book-schedule', [CounselorController::class, 'bookSchedule'])->name('counselor.bookSchedule');
-    // Route POST untuk menyimpan rating konselor
     Route::post('/counselor/save-rating', [CounselorController::class, 'saveRating'])->name('counselor.saveRating');
 
-    // Route untuk halaman riwayat
+    // Riwayat untuk Pengguna Biasa
     Route::get('/history', [HistoryController::class, 'showHistory'])->name('history');
 
-    // Route untuk halaman chat
-    // Route untuk halaman daftar chat aktif
+    // Chat untuk Pengguna Biasa
     Route::get('/chat', [ChatController::class, 'showChatList'])->name('chat');
-
-    // Route untuk menampilkan UI chat spesifik (ketika user klik konselor di daftar chat)
     Route::get('/chat/{receiverId}/{bookingId}/{scheduleId}', [ChatController::class, 'showChat'])->name('chat.show');
-
-    // Route untuk mengirim pesan
     Route::post('/chat/send-message', [ChatController::class, 'sendMessage'])->name('chat.sendMessage');
-
-    // Route untuk menyelesaikan sesi chat
     Route::post('/chat/complete-session', [ChatController::class, 'completeSession'])->name('chat.completeSession');
+    Route::post('/chat/get-session-messages', [ChatController::class, 'getSessionMessages'])->name('chat.getMessages');
 
-    // Route baru untuk mengambil pesan chat spesifik melalui AJAX
-    Route::post('/chat/get-session-messages', [App\Http\Controllers\ChatController::class, 'getSessionMessages'])->name('chat.getMessages');
-
-    // Chat Counselor (placeholder, ini untuk role counselor)
-    Route::get('/chat-counselor', [ChatController::class, 'showChatCounselor'])->name('chat-counselor');
-
+    Route::get('/chat-counselor', [ChatController::class, 'showChatCounselor'])->name('chat-counselor'); // Evaluasi ulang jika perlu
 });
 
-// --- Debug Route ---
+
+// ======================================================================
+// --- DEBUG ROUTE ---
+// ======================================================================
 Route::get('/debug-firebase', function () {
     $credentialsFile = config('firebase.credentials');
     $projectId = config('firebase.project_id');
