@@ -80,9 +80,12 @@
                 </div>
 
                 <div class="chat-input-area d-flex p-3 border-top">
-                    <input type="text" id="messageInput" class="form-control me-2" placeholder="Ketik pesan...">
-                    <button id="sendMessageBtn" class="btn btn-primary"><i class="bi bi-send-fill"></i></button>
-                    <button id="completeSessionBtn" class="btn btn-success ms-2"><i class="bi bi-check-circle-fill"></i> Selesaikan Sesi</button>
+                    <input type="text" id="messageInput" class="form-control me-2" placeholder="Ketik pesan..."
+                        @if($bookingStatus !== 'booked') disabled @endif>
+                    <button id="sendMessageBtn" class="btn btn-primary"
+                        @if($bookingStatus !== 'booked') disabled @endif><i class="bi bi-send-fill"></i></button>
+                    <button id="completeSessionBtn" class="btn btn-success ms-2"
+                        @if($bookingStatus !== 'booked') disabled @endif><i class="bi bi-check-circle-fill"></i> Selesaikan Sesi</button>
                 </div>
             @endif
         </div>
@@ -99,7 +102,7 @@
         const completeSessionBtn = document.getElementById('completeSessionBtn');
         const chatAjaxAlert = document.getElementById('chatAjaxAlert');
         const chatMessagesContainer = document.querySelector('.chat-messages-container');
-        const backToChatListBtn = document.getElementById('backToChatListBtn'); // Get the new back button
+        const backToChatListBtn = document.getElementById('backToChatListBtn');
 
         const senderId = "{{ $senderId }}";
         const senderName = "{{ $senderName }}";
@@ -110,6 +113,7 @@
         let selectedReceiverAvatar = "{{ $selectedReceiverAvatar ?? asset('images/default_profile.png') }}";
         let selectedBookingId = "{{ $selectedBookingId }}";
         let selectedScheduleId = "{{ $selectedScheduleId }}";
+        let bookingStatus = "{{ $bookingStatus ?? 'unknown' }}";
 
         function showAlert(message, type) {
             chatAjaxAlert.textContent = message;
@@ -150,6 +154,11 @@
                 console.warn('Cannot fetch messages: Missing receiverId or bookingId.');
                 return;
             }
+            // Only fetch if booking status is still 'booked'
+            if (bookingStatus !== 'booked') {
+                console.log('Booking is not active, not fetching new messages.');
+                return;
+            }
 
             try {
                 const response = await fetch('{{ route('chat.getMessages') }}', {
@@ -170,11 +179,17 @@
                 if (response.ok && data.success) {
                     renderMessages(data.messages);
                 } else {
-                    showAlert(data.message || 'Gagal memuat pesan baru.', 'danger');
+                    messageInput.disabled = true;
+                    sendMessageBtn.disabled = true;
+                    completeSessionBtn.disabled = true;
+                    showAlert(data.message || 'Gagal memuat pesan baru. Sesi mungkin sudah berakhir.', 'danger');
                 }
             } catch (error) {
                 console.error('Error fetching new messages:', error);
                 showAlert('Terjadi kesalahan jaringan saat memuat pesan baru.', 'danger');
+                messageInput.disabled = true;
+                sendMessageBtn.disabled = true;
+                completeSessionBtn.disabled = true;
             }
         }
 
@@ -183,6 +198,11 @@
                 const content = messageInput.value.trim();
                 if (content === '') {
                     showAlert('Pesan tidak boleh kosong.', 'warning');
+                    return;
+                }
+
+                if (bookingStatus !== 'booked') {
+                    showAlert('Sesi chat ini tidak aktif atau sudah selesai, tidak bisa mengirim pesan.', 'danger');
                     return;
                 }
 
@@ -229,12 +249,17 @@
 
         if (completeSessionBtn) {
             completeSessionBtn.addEventListener('click', async function() {
+                if (bookingStatus !== 'booked') {
+                    showAlert('Sesi ini sudah tidak aktif atau sudah selesai.', 'danger');
+                    return;
+                }
+
                 if (!selectedBookingId || selectedBookingId === '' || !selectedScheduleId || selectedScheduleId === '' || !selectedReceiverId || selectedReceiverId === '') {
                     showAlert('Data sesi tidak lengkap untuk diselesaikan.', 'danger');
                     return;
                 }
 
-                if (!confirm('Apakah Anda yakin ingin menyelesaikan sesi chat ini? Semua riwayat chat untuk sesi ini akan dihapus.')) {
+                if (!confirm('Apakah Anda yakin ingin menyelesaikan sesi chat ini? Sesi akan ditandai sebagai selesai dan Anda bisa memberikan rating di riwayat.')) {
                     return;
                 }
 
@@ -259,8 +284,9 @@
 
                     if (response.ok && data.success) {
                         showAlert(data.message, 'success');
+                        // After successfully completing the session, redirect to history or chat list
                         setTimeout(() => {
-                            window.location.href = "{{ route('chat') }}";
+                            window.location.href = "{{ route('history') }}";
                         }, 2000);
                     } else {
                         showAlert(data.message || 'Gagal menyelesaikan sesi.', 'danger');
@@ -288,9 +314,30 @@
             });
         }
 
+        // Initial load logic
         if (selectedReceiverId && selectedReceiverId !== '' && selectedBookingId && selectedBookingId !== '') {
+            // If viewing a specific chat, fetch messages and scroll to bottom
             scrollToBottom();
             fetchAndUpdateMessages();
+
+            // Disable input/button if booking is not 'booked'
+            if (bookingStatus !== 'booked') {
+                messageInput.disabled = true;
+                sendMessageBtn.disabled = true;
+                completeSessionBtn.disabled = true;
+                showAlert('Sesi chat ini sudah selesai. Silakan lihat riwayat Anda untuk memberikan rating.', 'info');
+            }
+
+            // Set up interval for refreshing messages
+            // Only if the booking is still active ('booked')
+            if (bookingStatus === 'booked') {
+                setInterval(fetchAndUpdateMessages, 5000); // Fetch new messages every 5 seconds
+            }
+
+        } else {
+            // If no specific chat selected, show chat list
+            chatListSection.style.display = 'block';
+            chatUISession.style.display = 'none';
         }
     });
 </script>

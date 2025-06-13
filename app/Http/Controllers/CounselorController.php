@@ -34,7 +34,6 @@ class CounselorController extends Controller
         $errorMessage = null;
 
         try {
-            // 1. Ambil data konselor
             $counselorDoc = $this->firestore->database()->collection('counselors')->document($counselorUid)->snapshot();
 
             if ($counselorDoc->exists()) {
@@ -48,7 +47,6 @@ class CounselorController extends Controller
                 $counselorData['rate'] = $counselorData['rate'] ?? 0.0;
                 $counselorData['about'] = $counselorData['about'] ?? 'Tidak ada deskripsi tersedia.';
 
-                // 2. Ambil ID jadwal dari data konselor
                 $scheduleIds = [];
                 for ($i = 1; $i <= 3; $i++) {
                     $scheduleIdKey = 'scheduleId' . $i;
@@ -57,7 +55,6 @@ class CounselorController extends Controller
                     }
                 }
 
-                // 3. Ambil detail jadwal dari koleksi 'schedules'
                 if (!empty($scheduleIds)) {
                     $schedulesSnapshot = $this->firestore->database()->collection('schedules')
                         ->where('scheduleId', 'in', $scheduleIds)
@@ -145,7 +142,6 @@ class CounselorController extends Controller
         }
 
         try {
-            // 1. Cek apakah user sudah memiliki booking dengan konselor ini
             $existingBookingSnapshot = $this->firestore->database()->collection('bookings')
                 ->where('userId', '=', $userUid)
                 ->where('counselorId', '=', $counselorUid)
@@ -158,7 +154,6 @@ class CounselorController extends Controller
                 return response()->json(['success' => false, 'message' => 'Anda sudah memiliki sesi aktif dengan konselor ini.'], 400);
             }
 
-            // 2. Ambil data konselor dan jadwal
             $counselorDoc = $this->firestore->database()->collection('counselors')->document($counselorUid)->snapshot();
             $scheduleDoc = $this->firestore->database()->collection('schedules')->document($scheduleId)->snapshot();
 
@@ -173,11 +168,10 @@ class CounselorController extends Controller
                 Log::warning('Konselor tidak ditemukan untuk UID: ' . $counselorUid);
                 return response()->json(['success' => false, 'message' => 'Data konselor tidak ditemukan.'], 404);
             }
-            if (!$scheduleDoc->exists()) { // Cek hanya keberadaan dokumen dulu
+            if (!$scheduleDoc->exists()) {
                 Log::warning('Jadwal tidak ditemukan untuk Schedule ID: ' . $scheduleId);
                 return response()->json(['success' => false, 'message' => 'Jadwal tidak tersedia.'], 400);
             }
-            // Setelah dokumen dipastikan ada, baru cek isBooked
             if (($scheduleDoc->data()['isBooked'] ?? false) == true) {
                 Log::warning('Jadwal sudah dibooking. Schedule ID: ' . $scheduleId);
                 return response()->json(['success' => false, 'message' => 'Jadwal sudah dibooking.'], 400);
@@ -208,7 +202,6 @@ class CounselorController extends Controller
             $userName = $userDoc->exists() ? ($userDoc->data()['name'] ?? 'User') : 'User';
             Log::info('Nama user yang booking:', ['userName' => $userName]);
 
-            // 3. Buat dokumen booking di 'bookings'
             $newBookingData = [
                 'scheduleId' => $scheduleId,
                 'counselorId' => $counselorUid,
@@ -217,7 +210,8 @@ class CounselorController extends Controller
                 'userName' => $userName,
                 'day' => $day,
                 'time' => $time,
-                'status' => 'booked',
+                'status' => 'booked', // Initial status
+                'hasBeenRated' => false, // Default: belum dirating
                 'createdAt' => Carbon::now()->toDateTimeString(),
             ];
             Log::info('Data untuk booking baru:', $newBookingData);
@@ -225,17 +219,15 @@ class CounselorController extends Controller
             $bookingId = $newBookingRef->id();
             Log::info('Booking baru berhasil dibuat dengan ID:', ['bookingId' => $bookingId]);
 
-
-            // 4. Simpan history booking ke 'history' (Pendekatan Baru: Langsung set dengan ID dokumen)
             $historyCollection = $this->firestore->database()->collection('history');
-            $newHistoryDocRef = $historyCollection->newDocument(); // Mendapatkan referensi dokumen baru dengan ID otomatis
-            $historyId = $newHistoryDocRef->id(); // Mendapatkan ID dokumen yang baru di-generate
+            $newHistoryDocRef = $historyCollection->newDocument();
+            $historyId = $newHistoryDocRef->id();
 
             // Tambahkan historyId ke data sebelum disimpan
             $newHistoryData = [
                 'userId' => $userUid,
                 'counselorId' => $counselorUid,
-                'bookingId' => $bookingId,
+                'bookingId' => $bookingId, // Sertakan bookingId ke history
                 'day' => $day,
                 'time' => $time,
                 'createdAt' => Carbon::now()->toDateTimeString(),
@@ -277,7 +269,7 @@ class CounselorController extends Controller
     public function saveRating(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'counselorUid' => 'required|string',
+            'bookingId' => 'required|string', // Perubahan: Menerima bookingId
             'rating' => 'required|numeric|min:1|max:5',
         ]);
 
@@ -285,7 +277,7 @@ class CounselorController extends Controller
             return response()->json(['success' => false, 'message' => 'Data rating tidak valid.', 'errors' => $validator->errors()->all()], 422);
         }
 
-        $counselorUid = $request->input('counselorUid');
+        $bookingId = $request->input('bookingId'); // Ambil bookingId
         $newRating = (double)$request->input('rating');
         $userUid = Session::get('uid');
 
@@ -294,6 +286,36 @@ class CounselorController extends Controller
         }
 
         try {
+            // 1. Ambil data booking untuk validasi
+            $bookingRef = $this->firestore->database()->collection('bookings')->document($bookingId);
+            $bookingSnapshot = $bookingRef->snapshot();
+
+            if (!$bookingSnapshot->exists()) {
+                Log::warning('Booking tidak ditemukan untuk ID: ' . $bookingId);
+                return response()->json(['success' => false, 'message' => 'Booking tidak ditemukan.'], 404);
+            }
+
+            $bookingData = $bookingSnapshot->data();
+            $counselorUid = $bookingData['counselorId'] ?? null; // Ambil counselorUid dari booking
+
+            // Validasi kepemilikan booking
+            if (($bookingData['userId'] ?? null) !== $userUid) {
+                Log::warning('User mencoba merating booking yang bukan miliknya.', ['userId' => $userUid, 'bookingId' => $bookingId]);
+                return response()->json(['success' => false, 'message' => 'Anda tidak berhak memberikan rating untuk sesi ini.'], 403);
+            }
+
+            // Validasi status booking (hanya yang 'completed')
+            if (($bookingData['status'] ?? 'pending') !== 'completed') {
+                Log::warning('User mencoba merating booking yang belum selesai.', ['bookingId' => $bookingId, 'status' => $bookingData['status']]);
+                return response()->json(['success' => false, 'message' => 'Anda hanya bisa memberikan rating setelah sesi selesai.'], 400);
+            }
+
+            // Validasi apakah booking sudah dirating sebelumnya
+            if (($bookingData['hasBeenRated'] ?? false) === true) {
+                Log::warning('Booking ini sudah dirating sebelumnya.', ['bookingId' => $bookingId]);
+                return response()->json(['success' => false, 'message' => 'Anda sudah memberikan rating untuk sesi ini.'], 400);
+            }
+
             $counselorRef = $this->firestore->database()->collection('counselors')->document($counselorUid);
             $docSnapshot = $counselorRef->snapshot();
 
@@ -301,7 +323,6 @@ class CounselorController extends Controller
                 return response()->json(['success' => false, 'message' => 'Konselor tidak ditemukan.'], 404);
             }
 
-            // Ambil daftar rating yang sudah ada
             $ratingList = $docSnapshot->data()['rating'] ?? [];
             if (!is_array($ratingList)) {
                 $ratingList = [];
@@ -319,11 +340,17 @@ class CounselorController extends Controller
                 ['path' => 'rating', 'value' => $ratingList],
                 ['path' => 'rate', 'value' => round($averageRating, 1)],
             ]);
+            Log::info('Rating konselor berhasil diperbarui di Firestore.', ['counselorId' => $counselorUid, 'newRating' => $newRating, 'averageRating' => $averageRating]);
+
+            $bookingRef->update([
+                ['path' => 'hasBeenRated', 'value' => true]
+            ]);
+            Log::info('Status booking diperbarui: hasBeenRated = true.', ['bookingId' => $bookingId]);
 
             return response()->json(['success' => true, 'message' => 'Rating berhasil disimpan.']);
 
         } catch (FirebaseException $e) {
-            Log::error('Firebase error saving rating: ' . $e->getMessage() . ' - UID: ' . $userUid);
+            Log::error('Firebase error saving rating: ' . $e->getMessage() . ' - UID: ' . $userUid, ['trace' => $e->getTraceAsString()]);
             return response()->json(['success' => false, 'message' => 'Gagal menyimpan rating: ' . $e->getMessage()], 500);
         } catch (\Throwable $e) {
             Log::error('Unexpected error saving rating: ' . $e->getMessage() . ' - Stack Trace: ' . $e->getTraceAsString() . ' - UID: ' . $userUid);

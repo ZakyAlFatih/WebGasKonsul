@@ -40,9 +40,10 @@ class ChatController extends Controller
         try {
             Log::info("Mulai mengambil daftar chat aktif untuk userId: $userId");
 
+            // Fetch bookings with status 'booked' to show in active chat list
             $bookingSnapshot = $this->firestore->database()->collection('bookings')
                 ->where('userId', '=', $userId)
-                ->where('status', '=', 'booked')
+                ->where('status', '=', 'booked') // Only show active/booked sessions here
                 ->documents();
 
             foreach ($bookingSnapshot as $bookingDoc) {
@@ -119,8 +120,19 @@ class ChatController extends Controller
         $errorMessage = null;
         $receiverName = 'Partner Chat';
         $receiverAvatar = asset('images/default_profile.png');
+        $bookingStatus = 'unknown'; // Tambahkan status booking di sini
 
         try {
+            // Get booking status
+            $bookingDoc = $this->firestore->database()->collection('bookings')->document($bookingId)->snapshot();
+            if ($bookingDoc->exists()) {
+                $bookingData = $bookingDoc->data();
+                $bookingStatus = $bookingData['status'] ?? 'unknown';
+            } else {
+                return redirect()->route('chat')->with('error', 'Sesi chat tidak ditemukan atau sudah berakhir.');
+            }
+
+
             $counselorDoc = $this->firestore->database()->collection('counselors')->document($receiverId)->snapshot();
             if ($counselorDoc->exists()) {
                 $receiverName = $counselorDoc->data()['name'] ?? 'Konselor';
@@ -129,6 +141,7 @@ class ChatController extends Controller
 
             Log::info("Memuat riwayat pesan antara $userId dan $receiverId untuk booking $bookingId");
 
+            // Query chat messages
             $chatSnapshot = $this->firestore->database()->collection('chats')
                 ->where('bookingId', '=', $bookingId)
                 ->where('senderId', 'in', [$userId, $receiverId])
@@ -169,7 +182,7 @@ class ChatController extends Controller
         }
 
         return view('chat', [
-            'chatList' => [],
+            'chatList' => [], // Keep empty since we're viewing a specific chat
             'errorMessage' => $errorMessage,
             'senderId' => $userId,
             'senderName' => $userName,
@@ -180,6 +193,7 @@ class ChatController extends Controller
             'selectedBookingId' => $bookingId,
             'selectedScheduleId' => $scheduleId,
             'messages' => $messages,
+            'bookingStatus' => $bookingStatus, // Pass booking status to the view
         ]);
     }
 
@@ -205,6 +219,13 @@ class ChatController extends Controller
         }
 
         try {
+            // Check booking status first
+            $bookingRef = $this->firestore->database()->collection('bookings')->document($request->bookingId);
+            $bookingSnapshot = $bookingRef->snapshot();
+            if (!$bookingSnapshot->exists() || ($bookingSnapshot->data()['status'] ?? 'unknown') !== 'booked') {
+                return response()->json(['success' => false, 'message' => 'Sesi chat ini tidak aktif atau sudah selesai.'], 400);
+            }
+
             $message = [
                 'senderId' => $senderId,
                 'receiverId' => $request->receiverId,
@@ -229,7 +250,9 @@ class ChatController extends Controller
     }
 
     /**
-     * Menyelesaikan sesi booking, mengembalikan jadwal, dan menghapus chat.
+     * Menyelesaikan sesi booking.
+     * Mengubah status booking menjadi 'completed' dan mengembalikan jadwal.
+     * Riwayat chat tidak dihapus, tetapi booking tidak lagi 'booked'.
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -239,7 +262,7 @@ class ChatController extends Controller
         $request->validate([
             'bookingId' => 'required|string',
             'scheduleId' => 'required|string',
-            'receiverId' => 'required|string',
+            'receiverId' => 'required|string', // Counselor ID, useful for logging
         ]);
 
         $userId = Session::get('uid');
@@ -249,41 +272,49 @@ class ChatController extends Controller
 
         $bookingId = $request->bookingId;
         $scheduleId = $request->scheduleId;
-        // $counselorId = $request->receiverId; // Tidak dipakai untuk hapus chat
+        $counselorId = $request->receiverId;
 
         try {
-            $this->firestore->database()->runTransaction(function (Transaction $transaction) use ($bookingId, $scheduleId) {
+            $this->firestore->database()->runTransaction(function (Transaction $transaction) use ($bookingId, $scheduleId, $counselorId, $userId) {
                 $db = $this->firestore->database();
 
-                // Hapus dokumen booking
+                // 1. Ambil dokumen booking
                 $bookingRef = $db->collection('bookings')->document($bookingId);
-                $transaction->delete($bookingRef);
-                Log::info("Dokumen booking dihapus: $bookingId");
+                $bookingDoc = $transaction->snapshot($bookingRef);
 
-                // Set isBooked = false pada schedule
+                if (!$bookingDoc->exists()) {
+                    throw new \Exception('Booking tidak ditemukan.');
+                }
+
+                $bookingData = $bookingDoc->data();
+
+                // Pastikan user yang menyelesaikan sesi adalah pemilik booking
+                if (($bookingData['userId'] ?? null) !== $userId) {
+                    throw new \Exception('Anda tidak berhak menyelesaikan sesi ini.');
+                }
+
+                // Pastikan status booking saat ini adalah 'booked'
+                if (($bookingData['status'] ?? 'unknown') !== 'booked') {
+                    throw new \Exception('Sesi ini tidak dalam status "booked" atau sudah selesai.');
+                }
+
+                // 2. Ubah status booking menjadi 'completed' dan set hasBeenRated ke false
+                $transaction->update($bookingRef, [
+                    ['path' => 'status', 'value' => 'completed'],
+                    ['path' => 'hasBeenRated', 'value' => false],
+                    ['path' => 'completedAt', 'value' => FieldValue::serverTimestamp()]
+                ]);
+                Log::info("Dokumen booking {$bookingId} diupdate status ke 'completed'.");
+
+                // 3. Set isBooked = false pada schedule
                 $scheduleRef = $db->collection('schedules')->document($scheduleId);
                 $transaction->update($scheduleRef, [
                     ['path' => 'isBooked', 'value' => false]
                 ]);
-                Log::info("Status isBooked pada schedule $scheduleId diupdate ke false");
-
-                // Hapus SEMUA chat yang berhubungan dengan bookingId ini
-                $chatCollectionRef = $db->collection('chats');
-                $chatQuery = $chatCollectionRef->where('bookingId', '=', $bookingId);
-
-                $chatDocs = $chatQuery->documents();
-                $deletedChatCount = 0;
-
-                foreach ($chatDocs as $chatDoc) {
-                    if ($chatDoc->exists()) {
-                        $transaction->delete($chatDoc->reference());
-                        $deletedChatCount++;
-                    }
-                }
-                Log::info("Total $deletedChatCount pesan chat terkait booking $bookingId dihapus.");
+                Log::info("Status isBooked pada schedule $scheduleId diupdate ke false.");
             });
 
-            return response()->json(['success' => true, 'message' => 'Sesi berhasil diselesaikan. Jadwal sudah tersedia kembali dan riwayat chat dihapus.']);
+            return response()->json(['success' => true, 'message' => 'Sesi berhasil diselesaikan. Anda sekarang bisa memberi rating di halaman riwayat.']);
 
         } catch (\Throwable $e) {
             Log::error('Error menyelesaikan sesi: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -310,13 +341,19 @@ class ChatController extends Controller
         }
 
         $receiverId = $request->receiverId;
-        $bookingId = $request->bookingId; // Ambil bookingId dari request
+        $bookingId = $request->bookingId;
         $messages = [];
 
         try {
+            $bookingRef = $this->firestore->database()->collection('bookings')->document($bookingId);
+            $bookingSnapshot = $bookingRef->snapshot();
+            if (!$bookingSnapshot->exists() || ($bookingSnapshot->data()['status'] ?? 'unknown') !== 'booked') {
+                return response()->json(['success' => false, 'message' => 'Sesi chat ini tidak aktif atau sudah selesai.'], 400);
+            }
+
+
             Log::info("Memuat pesan chat untuk sesi AJAX antara $userId dan $receiverId untuk booking $bookingId.");
 
-            // Menggunakan kombinasi senderId, receiverId, dan bookingId untuk query
             $chatSnapshot = $this->firestore->database()->collection('chats')
                 ->where('bookingId', '=', $bookingId)
                 ->where('senderId', 'in', [$userId, $receiverId])

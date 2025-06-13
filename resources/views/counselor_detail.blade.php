@@ -75,25 +75,7 @@
                             <p class="text-danger mt-2" id="bookingError" style="display: none;"></p>
                             <button id="bookScheduleBtn" class="btn btn-primary rounded-pill px-4 mt-2" disabled>Booking</button>
                         </div>
-                        <div class="text-end">
-                            <button id="showRatingPageBtn" class="btn btn-outline-primary rounded-pill px-4">Beri Rating</button>
-                        </div>
                     </div>
-                </div>
-            </div>
-
-            {{-- Tampilan Halaman Rating --}}
-            <div id="ratingView" style="display: none;" class="mt-4">
-                <div class="text-center mb-4">
-                    <h5 class="mb-4 text-dark">Berikan Rating untuk {{ $counselorData['name'] ?? 'Konselor' }}</h5>
-                    <div id="starRating" class="mb-3">
-                        @for($i = 1; $i <= 5; $i++)
-                            <i class="bi bi-star" data-rating="{{ $i }}" style="font-size: 2rem; cursor: pointer; color: #E0E0E0;"></i>
-                        @endfor
-                    </div>
-                    <button id="saveRatingBtn" class="btn btn-primary rounded-pill px-4">Simpan Rating</button>
-                    <p class="text-danger mt-2" id="ratingError" style="display: none;"></p>
-                    <button id="cancelRatingBtn" class="btn btn-outline-secondary rounded-pill px-4 mt-2">Batal</button>
                 </div>
             </div>
         @endif
@@ -104,20 +86,12 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const counselorProfileView = document.getElementById('counselorProfileView');
-        const ratingView = document.getElementById('ratingView');
-        const showRatingPageBtn = document.getElementById('showRatingPageBtn');
-        const cancelRatingBtn = document.getElementById('cancelRatingBtn');
         const bookScheduleBtn = document.getElementById('bookScheduleBtn');
         const scheduleButtons = document.querySelectorAll('#scheduleButtons button');
         const bookingError = document.getElementById('bookingError');
-        const starRating = document.getElementById('starRating');
-        const saveRatingBtn = document.getElementById('saveRatingBtn');
-        const ratingError = document.getElementById('ratingError');
         const counselorDetailAjaxAlert = document.getElementById('counselorDetailAjaxAlert');
 
         let selectedScheduleId = '';
-        let currentRating = 0;
         const counselorUid = "{{ $counselorUid }}";
 
         function showAlert(message, type) {
@@ -136,7 +110,6 @@
 
         function updateScheduleSelection(selectedId) {
             scheduleButtons.forEach(button => {
-                // Pastikan hanya tombol yang TIDAK dibooking yang bisa di-select
                 if (button.dataset.isBooked === 'false') {
                     if (button.dataset.scheduleId === selectedId) {
                         button.classList.remove('btn-outline-primary');
@@ -152,46 +125,12 @@
             clearErrors('bookingError');
         }
 
-        function updateStarRating(rating) {
-            currentRating = rating;
-            starRating.querySelectorAll('.bi-star, .bi-star-fill').forEach((star, index) => {
-                if (index < rating) {
-                    star.classList.remove('bi-star');
-                    star.classList.add('bi-star-fill');
-                    star.style.color = '#2897FF';
-                } else {
-                    star.classList.remove('bi-star-fill');
-                    star.classList.add('bi-star');
-                    star.style.color = '#E0E0E0';
-                }
-            });
-            clearErrors('ratingError');
-        }
-
-        // Event Listeners
-        showRatingPageBtn.addEventListener('click', function() {
-            counselorProfileView.style.display = 'none';
-            ratingView.style.display = 'block';
-            updateStarRating(0); // Reset rating saat masuk halaman rating
-        });
-
-        cancelRatingBtn.addEventListener('click', function() {
-            ratingView.style.display = 'none';
-            counselorProfileView.style.display = 'block';
-            updateStarRating(0); // Reset rating saat keluar dari halaman rating
-        });
-
         scheduleButtons.forEach(button => {
             const isBooked = button.dataset.isBooked === 'true';
-            if (!isBooked) { // Hanya yang belum dibooking yang bisa diklik
+            if (!isBooked) {
                 button.addEventListener('click', function() {
                     updateScheduleSelection(this.dataset.scheduleId);
                 });
-            } else {
-                // Tidak perlu mengubah kelas di sini karena sudah diatur di blade (btn-secondary disabled)
-                // Jika ingin memastikan, bisa tambahkan:
-                // button.classList.remove('btn-outline-primary', 'btn-primary');
-                // button.classList.add('btn-secondary', 'disabled');
             }
         });
 
@@ -241,68 +180,7 @@
             }
         });
 
-        starRating.addEventListener('click', function(e) {
-            const clickedStar = e.target.closest('.bi-star, .bi-star-fill');
-            if (clickedStar) {
-                const rating = parseInt(clickedStar.dataset.rating);
-                updateStarRating(rating);
-            }
-        });
-
-        saveRatingBtn.addEventListener('click', async function() {
-            if (currentRating === 0) {
-                ratingError.textContent = 'Silakan berikan rating (minimal 1 bintang).';
-                ratingError.style.display = 'block';
-                return;
-            }
-
-            showAlert('Menyimpan rating...', 'info');
-            saveRatingBtn.disabled = true;
-            ratingError.style.display = 'none';
-
-            try {
-                const response = await fetch('{{ route('counselor.saveRating') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        counselorUid: counselorUid,
-                        rating: currentRating
-                    })
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showAlert(data.message, 'success');
-                    // Kembali ke tampilan profil konselor setelah menyimpan rating
-                    ratingView.style.display = 'none';
-                    counselorProfileView.style.display = 'block';
-                    location.reload();
-                } else {
-                    ratingError.textContent = data.message || 'Gagal menyimpan rating.';
-                    ratingError.style.display = 'block';
-                    showAlert(data.message || 'Gagal menyimpan rating.', 'danger');
-                }
-            } catch (error) {
-                ratingError.textContent = 'Terjadi kesalahan jaringan atau server saat menyimpan rating.';
-                ratingError.style.display = 'block';
-                showAlert('Terjadi kesalahan jaringan atau server.', 'danger');
-                console.error('Error saving rating:', error);
-            } finally {
-                saveRatingBtn.disabled = false;
-            }
-        });
-
         // Inisialisasi tampilan awal
-        if (counselorProfileView) {
-            counselorProfileView.style.display = 'block';
-        }
-        if (ratingView) {
-            ratingView.style.display = 'none';
-        }
         updateScheduleSelection(selectedScheduleId); // Memastikan tombol booking dinonaktifkan di awal jika tidak ada jadwal terpilih
     });
 </script>
