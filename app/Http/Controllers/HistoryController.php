@@ -42,14 +42,18 @@ class HistoryController extends Controller
 
             $counselorUids = [];
             $rawHistoryData = [];
+            $bookingIds = [];
 
-            // Kumpulkan UID konselor dari riwayat untuk query batch
+            // Kumpulkan UID konselor dan ID booking dari riwayat
             foreach ($historySnapshot as $doc) {
                 if ($doc->exists()) {
                     $data = $doc->data();
                     $rawHistoryData[] = $data;
                     if (isset($data['counselorId']) && !empty($data['counselorId'])) {
                         $counselorUids[$data['counselorId']] = true;
+                    }
+                    if (isset($data['bookingId']) && !empty($data['bookingId'])) {
+                        $bookingIds[] = $data['bookingId'];
                     }
                 }
             }
@@ -70,42 +74,64 @@ class HistoryController extends Controller
                 }
             }
 
-            // Gabungkan data riwayat dengan data konselor
+            $bookingDataMap = [];
+            // Ambil detail booking secara batch jika ada ID booking
+            if (!empty($bookingIds)) {
+                $bookingRefs = array_map(function($id) {
+                    return $this->firestore->database()->collection('bookings')->document($id);
+                }, $bookingIds);
+
+                $bookingSnapshots = $this->firestore->database()->documents($bookingRefs);
+
+                foreach ($bookingSnapshots as $snapshot) {
+                    if ($snapshot->exists()) {
+                        $bookingDataMap[$snapshot->id()] = $snapshot->data();
+                    }
+                }
+            }
+
+            // Gabungkan data riwayat dengan data konselor dan booking
             foreach ($rawHistoryData as $historyData) {
                 $counselorId = $historyData['counselorId'] ?? null;
                 $counselorData = $counselorDataMap[$counselorId] ?? null;
+                $bookingId = $historyData['bookingId'] ?? null;
+                $bookingDetail = $bookingDataMap[$bookingId] ?? null;
 
                 $day = 'Tidak tersedia';
                 $time = 'Tidak tersedia';
 
-                // Logika untuk menentukan day dan time dari data konselor
-                if (isset($historyData['day']) && isset($historyData['time'])) {
+                if (isset($bookingDetail['day']) && isset($bookingDetail['time'])) {
+                    $day = $bookingDetail['day'];
+                    $time = $bookingDetail['time'];
+                } else if (isset($historyData['day']) && isset($historyData['time'])) {
                     $day = $historyData['day'];
                     $time = $historyData['time'];
                 } else if (isset($historyData['scheduleId'])) {
-                    $bookedScheduleId = $historyData['scheduleId'];
-
-                    if ($bookedScheduleId == ($counselorData['scheduleId1'] ?? null)) {
-                        $day = $counselorData['availability_day1'] ?? 'Tidak tersedia';
-                        $time = $counselorData['availability_time1'] ?? 'Tidak tersedia';
-                    } else if ($bookedScheduleId == ($counselorData['scheduleId2'] ?? null)) {
-                        $day = $counselorData['availability_day2'] ?? 'Tidak tersedia';
-                        $time = $counselorData['availability_time2'] ?? 'Tidak tersedia';
-                    } else if ($bookedScheduleId == ($counselorData['scheduleId3'] ?? null)) {
-                        $day = $counselorData['availability_day3'] ?? 'Tidak tersedia';
-                        $time = $counselorData['availability_time3'] ?? 'Tidak tersedia';
-                    }
+                     $bookedScheduleId = $historyData['scheduleId'];
+                     if ($bookedScheduleId == ($counselorData['scheduleId1'] ?? null)) {
+                         $day = $counselorData['availability_day1'] ?? 'Tidak tersedia';
+                         $time = $counselorData['availability_time1'] ?? 'Tidak tersedia';
+                     } else if ($bookedScheduleId == ($counselorData['scheduleId2'] ?? null)) {
+                         $day = $counselorData['availability_day2'] ?? 'Tidak tersedia';
+                         $time = $counselorData['availability_time2'] ?? 'Tidak tersedia';
+                     } else if ($bookedScheduleId == ($counselorData['scheduleId3'] ?? null)) {
+                         $day = $counselorData['availability_day3'] ?? 'Tidak tersedia';
+                         $time = $counselorData['availability_time3'] ?? 'Tidak tersedia';
+                     }
                 }
+
 
                 $bookingHistory[] = [
                     'userId' => $historyData['userId'] ?? '',
                     'counselorId' => $historyData['counselorId'] ?? '',
+                    'bookingId' => $bookingId,
                     'counselorName' => $counselorData['name'] ?? 'Tidak diketahui',
                     'counselorBidang' => $counselorData['bidang'] ?? 'Tidak diketahui',
                     'scheduleId' => $historyData['scheduleId'] ?? '',
                     'day' => $day,
                     'time' => $time,
-                    'status' => $historyData['status'] ?? 'completed',
+                    'status' => $bookingDetail['status'] ?? 'unknown',
+                    'hasBeenRated' => $bookingDetail['hasBeenRated'] ?? false,
                     'createdAt' => $historyData['createdAt'] ?? 'Tidak tersedia',
                     'counselorAvatar' => $counselorData['avatar'] ?? asset('images/default_profile.png'),
                 ];
